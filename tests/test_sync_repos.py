@@ -1,3 +1,4 @@
+import os
 import subprocess
 from pathlib import Path
 
@@ -5,31 +6,53 @@ import pytest
 
 import sync_repos
 from sync_repos import (
+    Choice,
+    Outcome,
+    Result,
+    decide,
     discover_repos,
+    in_progress_operation,
     inspect_repo,
     pull_rebase,
     render_report,
     render_summary,
-    run,
+    sync,
 )
 
 
-def git(path: Path, *args: str) -> str:
+def git(path: Path, *args: str, check: bool = True) -> str:
     result = subprocess.run(
-        ["git", *args], cwd=path, capture_output=True, text=True, check=True
+        ["git", *args], cwd=path, capture_output=True, text=True, check=check
     )
     return result.stdout.strip()
 
 
 def commit(repo: Path, filename: str, content: str, message: str) -> None:
-    (repo / filename).write_text(content)
+    target = repo / filename
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content)
     git(repo, "add", filename)
     git(repo, "commit", "-q", "-m", message)
 
 
 @pytest.fixture(autouse=True)
-def git_identity(monkeypatch):
+def isolated_git(monkeypatch):
+    """Keep the user's git config, hooks and repo-location variables out."""
+    for key in (
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_COMMON_DIR",
+        "GIT_PREFIX",
+    ):
+        monkeypatch.delenv(key, raising=False)
     for key, value in {
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "commit.gpgsign",
+        "GIT_CONFIG_VALUE_0": "false",
         "GIT_AUTHOR_NAME": "Tester",
         "GIT_AUTHOR_EMAIL": "t@example.com",
         "GIT_COMMITTER_NAME": "Tester",
@@ -59,9 +82,41 @@ def push_from_other(other: Path, filename="b.txt", message="remote change"):
     git(other, "push", "-q", "origin", "main")
 
 
+def add_beta(root: Path, tmp_path: Path) -> Path:
+    beta = root / "beta"
+    git(tmp_path, "clone", "-q", str(tmp_path / "remote.git"), str(beta))
+    return beta
+
+
 def collect():
     lines: list[str] = []
     return lines, lines.append
+
+
+def fail_git(monkeypatch, command: str, returncode=128, stderr="fatal: boom"):
+    """Make one git subcommand fail while everything else runs for real."""
+    real = sync_repos.run_git
+
+    def fake(path, *args, **kwargs):
+        if args[0] == command:
+            return subprocess.CompletedProcess(args, returncode, "", stderr)
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(sync_repos, "run_git", fake)
+
+
+def conflict_midway(alpha: Path, other: Path):
+    """Leave alpha in a half-resolved rebase and return its pre-rebase state."""
+    commit(alpha, "a.txt", "local\n", "local edit")
+    commit(other, "a.txt", "remote\n", "remote edit")
+    git(other, "push", "-q", "origin", "main")
+    state = inspect_repo(alpha)
+    git(alpha, "rebase", "origin/main", check=False)
+    assert in_progress_operation(alpha) == "rebase"
+    return state
+
+
+# --- discovery and inspection -------------------------------------------------
 
 
 def test_discover_repos_finds_only_git_dirs(world):
@@ -95,11 +150,92 @@ def test_no_fetch_does_not_see_new_commits(world):
     assert inspect_repo(alpha, fetch=False).behind == 0
 
 
+def test_no_upstream_and_detached_are_reported(world):
+    _, alpha, _ = world
+    git(alpha, "checkout", "-q", "-b", "scratch")
+    assert "no upstream" in (inspect_repo(alpha).problem or "")
+    git(alpha, "checkout", "-q", "--detach")
+    assert inspect_repo(alpha).problem == "detached HEAD"
+
+
+def test_fetch_failure_is_reported_not_raised(world):
+    _, alpha, _ = world
+    git(alpha, "remote", "set-url", "origin", str(alpha.parent / "missing.git"))
+    state = inspect_repo(alpha)
+    assert "fetch failed" in (state.problem or "")
+
+
+def test_fetch_timeout_is_a_fetch_error(world, monkeypatch):
+    _, alpha, _ = world
+    real = sync_repos.run_git
+
+    def fake(path, *args, **kwargs):
+        if args[0] == "fetch":
+            raise subprocess.TimeoutExpired(args, 1)
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(sync_repos, "run_git", fake)
+    assert "timed out" in (inspect_repo(alpha).problem or "")
+
+
+def test_dependency_file_in_non_ascii_directory_is_detected(world):
+    _, alpha, other = world
+    push_from_other(other, filename="é/uv.lock", message="bump")
+    assert inspect_repo(alpha).touches_dependencies
+
+
+# --- failing git commands must not look benign --------------------------------
+
+
+def test_status_failure_is_a_problem_not_a_clean_repo(world, monkeypatch):
+    _, alpha, _ = world
+    fail_git(monkeypatch, "status")
+    state = inspect_repo(alpha)
+    assert "git status failed" in (state.problem or "")
+
+
+def test_rev_list_failure_is_not_reported_up_to_date(world, monkeypatch):
+    root, alpha, _ = world
+    fail_git(monkeypatch, "rev-list")
+    lines, out = collect()
+    assert inspect_repo(alpha).problem
+    assert sync(root, check=True, out=out) == 2
+    assert "Up to date" not in "".join(lines)
+
+
+def test_fatal_symbolic_ref_is_not_called_detached_head(world, monkeypatch):
+    _, alpha, _ = world
+    fail_git(monkeypatch, "symbolic-ref")
+    assert inspect_repo(alpha).problem != "detached HEAD"
+
+
+def test_exception_in_one_repo_does_not_hide_the_others(world, tmp_path, monkeypatch):
+    root, _, other = world
+    beta = add_beta(root, tmp_path)
+    push_from_other(other)
+    real = sync_repos.run_git
+
+    def fake(path, *args, **kwargs):
+        if path.name == "alpha":
+            raise OSError("boom")
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(sync_repos, "run_git", fake)
+    lines, out = collect()
+    assert sync(root, check=True, out=out) == 2
+    text = "".join(lines)
+    assert "alpha: boom" in text
+    assert f"{beta.name}  [main]  1 commit behind" in text
+
+
+# --- rebasing -----------------------------------------------------------------
+
+
 def test_pull_rebase_updates_and_summarises(world):
     _, alpha, other = world
     push_from_other(other)
     outcome = pull_rebase(inspect_repo(alpha))
-    assert outcome.result == "updated" and outcome.commits == 1
+    assert outcome.result is Result.UPDATED and outcome.commits == 1
     assert (alpha / "b.txt").exists()
     assert "updated" in render_summary([outcome])
 
@@ -118,8 +254,38 @@ def test_diverged_rebase_keeps_local_commit(world):
     push_from_other(other)
     state = inspect_repo(alpha)
     assert state.diverged and "diverged" in render_report([state])
-    assert pull_rebase(state).result == "updated"
+    assert pull_rebase(state).result is Result.UPDATED
     assert git(alpha, "log", "--format=%s", "-2").splitlines()[0] == "local work"
+
+
+def test_local_merge_commit_survives_the_rebase(world):
+    _, alpha, other = world
+    git(alpha, "checkout", "-q", "-b", "feat")
+    commit(alpha, "f.txt", "f\n", "feature")
+    git(alpha, "checkout", "-q", "main")
+    commit(alpha, "m.txt", "m\n", "on main")
+    git(alpha, "merge", "-q", "--no-ff", "-m", "merge feat", "feat")
+    push_from_other(other)
+    assert pull_rebase(inspect_repo(alpha)).result is Result.UPDATED
+    assert git(alpha, "rev-list", "--merges", "--count", "origin/main..HEAD") == "1"
+
+
+def test_rebases_onto_the_reviewed_commit_not_newer_ones(world):
+    _, alpha, other = world
+    push_from_other(other, filename="b.txt")
+    state = inspect_repo(alpha)
+    push_from_other(other, filename="c.txt")  # lands after the report
+    assert pull_rebase(state).result is Result.UPDATED
+    assert (alpha / "b.txt").exists() and not (alpha / "c.txt").exists()
+
+
+def test_head_moving_after_the_report_is_skipped(world):
+    _, alpha, other = world
+    push_from_other(other)
+    state = inspect_repo(alpha)
+    commit(alpha, "late.txt", "x\n", "late local commit")
+    outcome = pull_rebase(state)
+    assert outcome.result is Result.SKIPPED and "HEAD moved" in outcome.detail
 
 
 def test_conflict_is_aborted_and_repo_left_clean(world):
@@ -129,34 +295,41 @@ def test_conflict_is_aborted_and_repo_left_clean(world):
     git(other, "push", "-q", "origin", "main")
     before = git(alpha, "rev-parse", "HEAD")
     outcome = pull_rebase(inspect_repo(alpha))
-    assert outcome.result == "conflict"
+    assert outcome.result is Result.CONFLICT
     assert git(alpha, "rev-parse", "HEAD") == before
     assert git(alpha, "status", "--porcelain") == ""
-    assert not sync_repos.rebase_in_progress(alpha)
+    assert in_progress_operation(alpha) is None
 
 
-def test_no_upstream_and_detached_are_reported(world):
-    _, alpha, _ = world
-    git(alpha, "checkout", "-q", "-b", "scratch")
-    assert "no upstream" in inspect_repo(alpha).problem
-    git(alpha, "checkout", "-q", "--detach")
-    assert inspect_repo(alpha).problem == "detached HEAD"
+def test_rebase_the_user_started_is_reported_and_never_aborted(world):
+    root, alpha, other = world
+    state = conflict_midway(alpha, other)
+
+    outcome = pull_rebase(state)  # state predates the user's rebase
+    assert outcome.result is Result.SKIPPED
+    assert in_progress_operation(alpha) == "rebase"
+
+    assert inspect_repo(alpha).problem == "rebase in progress"
+    assert sync(root, assume_yes=True, out=lambda _: None) == 0
+    assert in_progress_operation(alpha) == "rebase"
 
 
-def test_fetch_failure_is_reported_not_raised(world):
-    _, alpha, _ = world
-    git(alpha, "remote", "set-url", "origin", str(alpha.parent / "missing.git"))
-    state = inspect_repo(alpha)
-    assert state.fetch_error and "fetch failed" in state.problem
+# --- exit codes and prompting -------------------------------------------------
 
 
 def test_check_mode_exit_codes_and_no_changes(world):
     root, alpha, other = world
     _, out = collect()
-    assert run(root, check=True, out=out) == 0
+    assert sync(root, check=True, out=out) == 0
     push_from_other(other)
-    assert run(root, check=True, out=out) == 1
+    assert sync(root, check=True, out=out) == 1
     assert not (alpha / "b.txt").exists()
+
+
+def test_check_mode_exits_2_when_a_repo_cannot_be_checked(world):
+    root, alpha, _ = world
+    git(alpha, "remote", "set-url", "origin", str(root / "missing.git"))
+    assert sync(root, check=True, out=lambda _: None) == 2
 
 
 @pytest.mark.parametrize(
@@ -166,18 +339,55 @@ def test_prompt_answers(world, answer, pulled):
     root, alpha, other = world
     push_from_other(other)
     _, out = collect()
-    run(root, prompt=lambda _: answer, out=out)
+    sync(root, prompt=lambda _: answer, out=out)
     assert (alpha / "b.txt").exists() is pulled
 
 
 def test_answer_all_pulls_every_repo(world, tmp_path):
     root, alpha, other = world
-    beta = root / "beta"
-    git(tmp_path, "clone", "-q", str(tmp_path / "remote.git"), str(beta))
+    beta = add_beta(root, tmp_path)
     push_from_other(other)
     answers = iter(["a"])
-    run(root, prompt=lambda _: next(answers), out=lambda _: None)
+    sync(root, prompt=lambda _: next(answers), out=lambda _: None)
     assert (alpha / "b.txt").exists() and (beta / "b.txt").exists()
+
+
+def test_quit_skips_the_remaining_repos(world, tmp_path):
+    root, alpha, other = world
+    beta = add_beta(root, tmp_path)
+    push_from_other(other)
+    answers = iter(["y", "q"])
+    sync(root, prompt=lambda _: next(answers), out=lambda _: None)
+    assert (alpha / "b.txt").exists() and not (beta / "b.txt").exists()
+
+
+def test_end_of_input_quits_cleanly(world):
+    root, alpha, other = world
+    push_from_other(other)
+
+    def eof(_):
+        raise EOFError
+
+    assert sync(root, prompt=eof, out=lambda _: None) == 0
+    assert not (alpha / "b.txt").exists()
+
+
+def test_ctrl_c_prints_the_partial_summary_and_exits_130(world, tmp_path):
+    root, alpha, other = world
+    beta = add_beta(root, tmp_path)
+    push_from_other(other)
+    answers = iter(["y"])
+
+    def interrupt_second(_):
+        try:
+            return next(answers)
+        except StopIteration:
+            raise KeyboardInterrupt from None
+
+    lines, out = collect()
+    assert sync(root, prompt=interrupt_second, out=out) == 130
+    assert (alpha / "b.txt").exists() and not (beta / "b.txt").exists()
+    assert "alpha: updated" in "".join(lines)
 
 
 def test_yes_flag_pulls_without_prompting(world):
@@ -187,18 +397,19 @@ def test_yes_flag_pulls_without_prompting(world):
     def fail(_):
         raise AssertionError("should not prompt")
 
-    assert run(root, assume_yes=True, prompt=fail, out=lambda _: None) == 0
+    assert sync(root, assume_yes=True, prompt=fail, out=lambda _: None) == 0
     assert (alpha / "b.txt").exists()
 
 
-def test_dirty_repo_is_skipped(world):
+def test_dirty_repo_is_skipped_but_others_still_pulled(world, tmp_path):
     root, alpha, other = world
+    beta = add_beta(root, tmp_path)
     push_from_other(other)
     (alpha / "a.txt").write_text("dirty\n")
     lines, out = collect()
-    run(root, assume_yes=True, out=out)
-    assert not (alpha / "b.txt").exists()
-    assert "skipped" in "".join(lines)
+    sync(root, prompt=lambda _: "a", out=out)
+    assert not (alpha / "b.txt").exists() and (beta / "b.txt").exists()
+    assert "alpha: skipped" in "".join(lines)
 
 
 def test_conflict_makes_run_exit_nonzero(world):
@@ -206,4 +417,86 @@ def test_conflict_makes_run_exit_nonzero(world):
     commit(alpha, "a.txt", "local\n", "local edit")
     commit(other, "a.txt", "remote\n", "remote edit")
     git(other, "push", "-q", "origin", "main")
-    assert run(root, assume_yes=True, out=lambda _: None) == 1
+    assert sync(root, assume_yes=True, out=lambda _: None) == 1
+
+
+# --- decide, summaries, main --------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "answer, expected",
+    [
+        ("y", (Choice.YES, False)),
+        ("YES", (Choice.YES, False)),
+        ("a", (Choice.YES, True)),
+        ("q", (Choice.QUIT, False)),
+        ("", (Choice.NO, False)),
+        ("what", (Choice.NO, False)),
+    ],
+)
+def test_decide_answers(world, answer, expected):
+    _, alpha, other = world
+    push_from_other(other)
+    state = inspect_repo(alpha)
+    assert decide(state, lambda _: answer, False, False) == expected
+
+
+def test_decide_warns_about_unpushed_commits(world):
+    _, alpha, other = world
+    commit(alpha, "local.txt", "l\n", "local work")
+    push_from_other(other)
+    asked: list[str] = []
+    decide(inspect_repo(alpha), lambda q: asked.append(q) or "n", False, False)
+    assert "1 unpushed local commit(s) will be rebased" in asked[0]
+
+
+def test_decide_never_prompts_with_yes_or_after_all(world):
+    _, alpha, _ = world
+    state = inspect_repo(alpha)
+
+    def fail(_):
+        raise AssertionError("should not prompt")
+
+    assert decide(state, fail, True, False) == (Choice.YES, False)
+    assert decide(state, fail, False, True) == (Choice.YES, True)
+
+
+def test_render_summary_covers_every_outcome():
+    text = render_summary(
+        [
+            Outcome("a", Result.DECLINED),
+            Outcome("b", Result.SKIPPED, "uncommitted changes"),
+            Outcome("c", Result.CONFLICT, "aborted"),
+            Outcome("d", Result.FAILED, "no network"),
+        ]
+    )
+    assert "a: declined" in text
+    assert "b: skipped (uncommitted changes)" in text
+    assert "c: conflict (aborted)" in text
+    assert "d: failed (no network)" in text
+    assert "0 updated, 2 with problems." in text
+    assert render_summary([]) == "Nothing was pulled.\n"
+
+
+def test_main_without_a_terminal_behaves_like_check(world, capsys, monkeypatch):
+    root, alpha, other = world
+    push_from_other(other)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False, raising=False)
+    assert sync_repos.main(["--root", str(root)]) == 1
+    assert "1 commit behind" in capsys.readouterr().out
+    assert not (alpha / "b.txt").exists()
+
+
+def test_main_yes_pulls(world, monkeypatch):
+    root, alpha, other = world
+    push_from_other(other)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False, raising=False)
+    assert sync_repos.main(["--root", str(root), "--yes"]) == 0
+    assert (alpha / "b.txt").exists()
+
+
+def test_main_reports_missing_git(world, capsys, monkeypatch):
+    root, _, _ = world
+    monkeypatch.setattr(sync_repos.shutil, "which", lambda _: None)
+    assert sync_repos.main(["--root", str(root)]) == 2
+    assert "git was not found" in capsys.readouterr().err
