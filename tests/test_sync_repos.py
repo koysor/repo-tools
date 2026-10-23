@@ -1,4 +1,3 @@
-import os
 import subprocess
 from pathlib import Path
 
@@ -6,7 +5,9 @@ import pytest
 
 import sync_repos
 from sync_repos import (
+    FIELD_SEP,
     Choice,
+    Commit,
     Outcome,
     Result,
     decide,
@@ -33,32 +34,6 @@ def commit(repo: Path, filename: str, content: str, message: str) -> None:
     target.write_text(content)
     git(repo, "add", filename)
     git(repo, "commit", "-q", "-m", message)
-
-
-@pytest.fixture(autouse=True)
-def isolated_git(monkeypatch):
-    """Keep the user's git config, hooks and repo-location variables out."""
-    for key in (
-        "GIT_DIR",
-        "GIT_WORK_TREE",
-        "GIT_INDEX_FILE",
-        "GIT_OBJECT_DIRECTORY",
-        "GIT_COMMON_DIR",
-        "GIT_PREFIX",
-    ):
-        monkeypatch.delenv(key, raising=False)
-    for key, value in {
-        "GIT_CONFIG_GLOBAL": os.devnull,
-        "GIT_CONFIG_NOSYSTEM": "1",
-        "GIT_CONFIG_COUNT": "1",
-        "GIT_CONFIG_KEY_0": "commit.gpgsign",
-        "GIT_CONFIG_VALUE_0": "false",
-        "GIT_AUTHOR_NAME": "Tester",
-        "GIT_AUTHOR_EMAIL": "t@example.com",
-        "GIT_COMMITTER_NAME": "Tester",
-        "GIT_COMMITTER_EMAIL": "t@example.com",
-    }.items():
-        monkeypatch.setenv(key, value)
 
 
 @pytest.fixture
@@ -500,3 +475,8 @@ def test_main_reports_missing_git(world, capsys, monkeypatch):
     monkeypatch.setattr(sync_repos.shutil, "which", lambda _: None)
     assert sync_repos.main(["--root", str(root)]) == 2
     assert "git was not found" in capsys.readouterr().err
+
+
+def test_commit_parse_tolerates_stripped_empty_subject():
+    commit = Commit.parse(f"abc1234{FIELD_SEP}2026-01-01{FIELD_SEP}Tester")
+    assert commit == Commit("abc1234", "2026-01-01", "Tester", "")

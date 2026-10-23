@@ -63,7 +63,14 @@ class Commit:
 
     @classmethod
     def parse(cls, line: str) -> Commit:
-        return cls(*line.split(FIELD_SEP, 3))
+        """Parse a `%h<sep>%as<sep>%an<sep>%s` line.
+
+        git_out strips its output and str.strip() treats the separator as
+        whitespace, so a commit with an empty subject arrives one field short.
+        """
+        fields = line.split(FIELD_SEP, 3)
+        fields += [""] * (4 - len(fields))
+        return cls(*fields)
 
 
 @dataclass(slots=True)
@@ -166,18 +173,25 @@ def in_progress_operation(path: Path) -> str | None:
     return None
 
 
+def fetch_prune(path: Path) -> str | None:
+    """Fetch `path` from its remotes; return why that failed, or None on success.
+
+    --prune rewrites remote-tracking refs, even for read-only callers.
+    """
+    try:
+        fetched = run_git(path, "fetch", "--prune", timeout=FETCH_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return f"timed out after {FETCH_TIMEOUT}s"
+    if fetched.returncode == 0:
+        return None
+    lines = fetched.stderr.strip().splitlines()
+    return lines[-1] if lines else "unknown error"
+
+
 def _inspect(state: RepoState, fetch: bool) -> None:
     path = state.path
     if fetch:
-        # --prune rewrites remote-tracking refs, even under --check.
-        try:
-            fetched = run_git(path, "fetch", "--prune", timeout=FETCH_TIMEOUT)
-        except subprocess.TimeoutExpired:
-            state.fetch_error = f"timed out after {FETCH_TIMEOUT}s"
-        else:
-            if fetched.returncode != 0:
-                lines = fetched.stderr.strip().splitlines()
-                state.fetch_error = lines[-1] if lines else "unknown error"
+        state.fetch_error = fetch_prune(path)
 
     # symbolic-ref -q exits 1 for a detached HEAD but 128 for real failures.
     head = run_git(path, "symbolic-ref", "--short", "-q", "HEAD")

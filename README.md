@@ -2,6 +2,19 @@
 
 Small scripts for working across a folder of sibling git repos.
 
+## repo_status.py
+
+Shows detailed git status for every git repo next to this one, without changing anything: branch, ahead/behind the upstream, staged, unstaged, untracked and conflicted files, stashes, any rebase/merge left half-finished, and the last commit. Clean repos are listed by name on one line, annotated when clean cannot be taken at face value (detached HEAD, no upstream, upstream gone, stashes).
+
+```bash
+uv run repo_status.py                # report from the last fetch
+uv run repo_status.py --fetch        # fetch first so ahead/behind is current
+uv run repo_status.py --max-files 0  # list every file (default: 10 per category)
+uv run repo_status.py --root PATH    # scan PATH instead of this repo's parent
+```
+
+Exit codes: 0 everything clean, 1 something to commit, push, pull or finish, 2 a repo could not be inspected (takes precedence), 130 interrupted. Stashes are shown but do not make a repo unclean. It reuses the git plumbing in `sync_repos.py`, so the two scripts need to stay together.
+
 ## sync_repos.py
 
 Checks every git repo next to this one for commits that exist on the remote but not locally, shows what is incoming, and offers to rebase onto the incoming commits.
