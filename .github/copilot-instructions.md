@@ -24,14 +24,19 @@ need network access.
 ## Architecture and conventions
 
 `repo_status.py` reports branch/upstream state and working-tree changes without
-changing repositories. `sync_repos.py` shares its Git plumbing and handles
+changing working trees or branches; `--fetch` updates remote-tracking refs
+first. `sync_repos.py` shares its Git plumbing and handles
 fetch/report/optional rebase. Keep shared discovery and subprocess helpers in
 `sync_repos.py`; keep report rendering and decision logic separable from Git
 operations so tests can inject output and prompt functions.
 
 `repo_status.py` scans sibling repositories from the parent directory by
-default; `sync_repos.py` does the same but offers rebases only after reporting
-incoming commits. `--check` is report-only. Rebase against the exact upstream
+default, or from `--root`; `sync_repos.py` does the same but offers rebases only
+after reporting incoming commits. `sync_repos.py` runs `git fetch --prune` unless
+given `--no-fetch`, so `--check` never rebases or prompts but can still update
+remote-tracking refs. `--yes` rebases every eligible repository without asking.
+`sync-check.ps1` in the parent directory relies on `--root` and `--fetch`.
+Rebase against the exact upstream
 commit shown to the user, skip repositories with uncommitted changes, and abort
 a conflicted rebase rather than leaving a sibling repository mid-operation.
 Avoid destructive side effects in the status-reporting path.

@@ -1,6 +1,6 @@
 # Repo maintenance guide
 
-What was done across the six repos in `C:\Repos`, why, and the git and tooling concepts behind it.
+What was done across the repos in `C:\Repos`, why, and the git and tooling concepts behind it.
 
 - [1. The repos](#1-the-repos)
 - [2. What was done, in order](#2-what-was-done-in-order)
@@ -16,15 +16,12 @@ What was done across the six repos in `C:\Repos`, why, and the git and tooling c
 
 | Repo | Purpose |
 |---|---|
-| `cqf` | Coursework for the Certificate in Quantitative Finance: notes, labs, exams, final project. |
 | `quant-finance` | Python code and Streamlit apps for fixed income, options and portfolio management. |
 | `maths-python` | Streamlit app with Python snippets for calculus, stochastic calculus, linear algebra and probability. |
 | `quant-finance-flash-cards` | Flask flash-card app: 1,679 cards, 16 topics, linked by a concept graph. |
-| `football-scores` | Placeholder: predict scores from Betfair odds. No code yet. |
-| `dataframe-compare` | Placeholder. No code yet. |
 | `repo-tools` | New. Holds `sync_repos.py`, which checks all the repos for remote changes. |
 
-The first four are Python projects managed with **uv**. The last three are small or empty.
+The first three are Python applications managed with **uv**. `repo-tools` is a small set of scripts, also managed with uv.
 
 ---
 
@@ -38,7 +35,7 @@ Windows cannot run a `.sh` file by itself. It needs a POSIX shell such as Git Ba
 
 ### 2.2 uv installed and virtual environments built
 
-`uv` was installed with `winget install astral-sh.uv`. `uv sync` was then run in the four Python repos, creating a `.venv` in each from `pyproject.toml` and `uv.lock`. `dataframe-compare` and `football-scores` have no Python project files, so they were skipped.
+`uv` was installed with `winget install astral-sh.uv`. `uv sync` was then run in the Python repos, creating a `.venv` in each from `pyproject.toml` and `uv.lock`.
 
 ### 2.3 Flash cards app fix
 
@@ -50,14 +47,11 @@ The app refused to start with `SECRET_KEY environment variable must be set in pr
 
 | Area | Change |
 |---|---|
-| Lint | Ruff configured and pinned in `quant-finance-flash-cards` and `cqf`, with the same rule set as the sibling repos. 9 unused imports were fixed in flash-cards. |
-| Pre-commit | `.pre-commit-config.yaml` added to flash-cards. `cqf` keeps its custom `.githooks/pre-commit`. |
-| CI | New `tests.yml` in `maths-python` (with coverage). `quant-finance`'s test workflow now reports coverage. New `code-quality.yml` in flash-cards. New `ci.yml` in `cqf`. `quant-finance`'s code-quality job now runs through uv. New or changed workflows have `permissions: contents: read` and cancel superseded runs. |
-| Dependabot | `.github/dependabot.yml` added to the four Python repos, covering uv packages and GitHub Actions. |
-| Stubs | The template workflow was deleted from `dataframe-compare`. Both stub READMEs now say they are placeholders. |
+| Lint | Ruff configured and pinned in `quant-finance-flash-cards`, with the same rule set as the sibling repos. 9 unused imports were fixed in flash-cards. |
+| Pre-commit | `.pre-commit-config.yaml` added to flash-cards. |
+| CI | New `tests.yml` in `maths-python` (with coverage). `quant-finance`'s test workflow now reports coverage. New `code-quality.yml` in flash-cards. `quant-finance`'s code-quality job now runs through uv. New or changed workflows have `permissions: contents: read` and cancel superseded runs. |
+| Dependabot | `.github/dependabot.yml` added to the Python repos, covering uv packages and GitHub Actions. |
 | Small fixes | `uv.lock` removed from `quant-finance/.gitignore` (it was ignored and tracked at once). `.coverage` added to the ignore files. |
-
-`cqf`'s CI lints only the final project's Python files, excluding the notebook. That project has its own strict `.ruff.toml`, and its notebook has 92 violations. The coursework notebooks and exercise scripts have over 100 more, so CI does not check them.
 
 ### 2.5 Dependabot's first pull requests
 
@@ -132,7 +126,7 @@ A **conflict** happens when your commit and the incoming one change the same lin
 
 ### Hooks
 
-A **hook** is a script git runs at certain moments, such as just before a commit. `cqf/.githooks/pre-commit` stops a commit if a generated file would drift from its source. A hook folder only applies after `git config core.hooksPath .githooks`, once per clone.
+A **hook** is a script git runs at certain moments, such as just before a commit. A pre-commit hook can, for example, stop a commit if a generated file would drift from its source. A hook folder only applies after `git config core.hooksPath .githooks`, once per clone.
 
 ### Line endings (the CRLF warnings)
 
@@ -228,4 +222,4 @@ uv sync                         # create or refresh .venv
 uv run pytest                   # run tests in the project environment
 ```
 
-**Setting up a second machine (for example Linux):** install `git`, `uv` and `gh`; clone the repos; run `uv sync` in each; run `git config core.hooksPath .githooks` in `cqf`; set `FLASK_DEBUG=1` for the flash-cards app.
+**Setting up a second machine (for example Linux):** install `git`, `uv` and `gh`; clone the repos; run `uv sync` in each; run `git config core.hooksPath .githooks` in any repo that keeps its hooks there; set `FLASK_DEBUG=1` for the flash-cards app.
