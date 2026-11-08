@@ -2,6 +2,17 @@
 
 Small scripts for working across a folder of sibling git repos.
 
+## sync-check (Windows)
+
+`sync-check.cmd` (or `sync-check.ps1`) runs the scripts below against the parent folder in one go: `repo_status.py --fetch`, then asks whether to run `sync_repos.py`, then `install_workspace.py --update`.
+
+```powershell
+.\repo-tools\sync-check.cmd        # from the repos folder
+.\repo-tools\sync-check.ps1 -Yes   # sync without the first prompt (sync_repos.py still asks per repo)
+```
+
+Without a usable console it skips the sync prompt and does not sync unless `-Yes` is given. To keep running `.\sync-check.cmd` from the repos folder itself, add a forwarder there containing `@call "%~dp0repo-tools\sync-check.cmd" %*`.
+
 ## repo_status.py
 
 Shows detailed git status for every git repo next to this one, without changing anything: branch, ahead/behind the upstream, staged, unstaged, untracked and conflicted files, stashes, any rebase/merge left half-finished, and the last commit. Clean repos are listed by name on one line, annotated when clean cannot be taken at face value (detached HEAD, no upstream, upstream gone, stashes).

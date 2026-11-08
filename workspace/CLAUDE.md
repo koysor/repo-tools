@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Layout
 
-The repos folder (`C:\Repos` on Windows) is not a git repository or a monorepo. It is a plain folder of independent sibling repos, each with its own remote (`github.com/koysor/<name>`), virtual environment and tooling. This file is kept in git as `repo-tools/workspace/CLAUDE.md`; the `CLAUDE.md` in the repos folder is a copy written by `repo-tools/install_workspace.py` (which `sync-check.ps1` runs). Edit the git copy and re-run the script, never the copy. `sync-check.*` are not under version control.
+The repos folder (`C:\Repos` on Windows) is not a git repository or a monorepo. It is a plain folder of independent sibling repos, each with its own remote (`github.com/koysor/<name>`), virtual environment and tooling. This file is kept in git as `repo-tools/workspace/CLAUDE.md`; the `CLAUDE.md` in the repos folder is a copy written by `repo-tools/install_workspace.py` (which `sync-check.ps1` runs). Edit the git copy and re-run the script, never the copy.
 
 Run git, `uv` and test commands from inside the relevant repo, or point at it with `git -C <repo>` / `uv run --project <repo>`. There is no root-level `pyproject.toml`, so `uv run` from the root has no project to use. A change that spans repos needs a separate commit in each.
 
@@ -30,11 +30,11 @@ Follow the guidance file of the repo you are working in; it takes precedence ove
 ## Cross-repo status and sync
 
 ```powershell
-.\sync-check.cmd        # fetch, show status of every repo, then prompt to sync
-.\sync-check.ps1 -Yes   # same, without the prompt
+.\repo-tools\sync-check.cmd        # fetch, show status of every repo, prompt to sync, then run install_workspace.py --update
+.\repo-tools\sync-check.ps1 -Yes   # same, without the prompt
 ```
 
-`sync-check.ps1` wraps two scripts from `repo-tools`. To run them directly:
+The scripts live in `repo-tools` (Windows only). This machine may also have forwarders at `.\sync-check.cmd` / `.\sync-check.ps1` in the repos folder; they are not in git. `sync-check.ps1` wraps scripts from `repo-tools`. To run them directly:
 
 ```bash
 uv run --project repo-tools repo-tools/repo_status.py --fetch --root .   # read-only report

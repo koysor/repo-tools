@@ -35,7 +35,7 @@ default, or from `--root`; `sync_repos.py` does the same but offers rebases only
 after reporting incoming commits. `sync_repos.py` runs `git fetch --prune` unless
 given `--no-fetch`, so `--check` never rebases or prompts but can still update
 remote-tracking refs. `--yes` rebases every eligible repository without asking.
-`sync-check.ps1` in the parent directory relies on `--root` and `--fetch`.
+`sync-check.ps1` in this repo relies on `--root` (the parent directory) and `--fetch`.
 Rebase against the exact upstream
 commit shown to the user, skip repositories with uncommitted changes, and abort
 a conflicted rebase rather than leaving a sibling repository mid-operation.
