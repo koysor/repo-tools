@@ -24,7 +24,7 @@ Follow the guidance file of the repo you are working in; it takes precedence ove
 
 - All Python projects use `uv` and Python 3.14. `cqf` is pinned to exactly 3.14.8; the others use `>=3.14`.
 - Use `uv run <tool>` rather than calling `python`, `pytest` or `ruff` directly. Code in these repos can use 3.14-only syntax that older interpreters reject (for example, unparenthesised `except A, B:`).
-- Claude skills used in more than one repo live in `repo-tools/skills/` and are shared through the `koysor-skills` plugin (installed at user scope; see `repo-tools/README.md`). Skills specific to one repo stay in that repo's `.claude/skills/<name>/SKILL.md`.
+- Claude skills used in more than one repo live in `repo-tools/skills/` and are shared through the `koysor-skills` plugin, which `repo-tools/install_workspace.py` installs at user scope (see `repo-tools/README.md`). Skills specific to one repo stay in that repo's `.claude/skills/<name>/SKILL.md`.
 - On Windows, several repos' guidance and scripts assume a POSIX shell and macOS or Linux tools: the `launch_*.sh` scripts, `source .venv/bin/activate`, `lsof`. Run those through the Bash tool (Git Bash), or use the direct `uv run ...` equivalent; `lsof` needs a Windows substitute.
 
 ## Cross-repo status and sync

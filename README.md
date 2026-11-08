@@ -103,15 +103,22 @@ At the prompt, `a(ll)` merges this PR and every remaining **merge**-verdict PR; 
 
 `skills/review-prs/SKILL.md` builds on the script: Claude runs `--json`, reads each PR's diff and release notes, writes a short risk summary next to the script's verdict, asks which PRs to merge, and merges only those with `--merge`. Ask Claude Code to "review the open PRs" from `C:\Repos` or any repo. It is part of the `koysor-skills` plugin below.
 
-## Workspace CLAUDE.md
+## Machine setup: install_workspace.py
 
-`workspace/CLAUDE.md` is the Claude Code guidance for the folder that holds all the sibling repos (layout, shared conventions, cross-repo commands). Claude reads it from a copy in that parent folder, which `install_workspace.py` writes:
+Run once on each machine after cloning, and again whenever you like; it only changes what is missing or out of date. It does two things:
+
+1. Copies `workspace/CLAUDE.md` (the Claude Code guidance for the folder that holds all the sibling repos: layout, shared conventions, cross-repo commands) into that parent folder, backing up a differing copy to `CLAUDE.md.bak`.
+2. Makes sure the `koysor-skills` plugin below is installed at user scope: adds the `repo-tools` marketplace (`koysor/repo-tools` on GitHub) and installs the plugin if either is missing. A disabled plugin is reported, not re-enabled. Skipped if `claude` is not on PATH.
 
 ```bash
-uv run install_workspace.py           # write ../CLAUDE.md (backs up a differing copy to CLAUDE.md.bak)
-uv run install_workspace.py --check   # report only; exit 1 if the copy is missing or out of date
+uv run install_workspace.py             # set up anything missing
+uv run install_workspace.py --update    # same, then update the marketplace and plugin to the latest push
+uv run install_workspace.py --check     # report only; exit 1 if anything is missing or out of date
+uv run install_workspace.py --no-plugin # only the CLAUDE.md copy
 uv run install_workspace.py --root PATH
 ```
+
+Exit codes: 0 set up, 1 `--check` found something missing, 2 a `claude` command failed or `--root` is not a folder. `sync-check.ps1` runs it with `--update`.
 
 Edit `workspace/CLAUDE.md` here, commit it and re-run the script; never edit the copy. It is a copy rather than an `@repo-tools/workspace/CLAUDE.md` import because Claude Code asks for approval of an import from outside the project once in every repo, and ignores it until then.
 
@@ -124,19 +131,14 @@ This repo is also a Claude Code plugin marketplace. Skills in `skills/` are shar
 | `koysor-skills:review-prs` | Reviews and merges open PRs across the sibling repos with `review_prs.py` |
 | `koysor-skills:marimo-helper` | Rules for marimo notebooks: unique globals, reactive dependencies, browser limits |
 
-Install once per machine:
+`install_workspace.py` installs it (see above). To do it by hand instead:
 
 ```bash
 claude plugin marketplace add koysor/repo-tools
 claude plugin install koysor-skills@repo-tools --scope user
 ```
 
-To change a skill, edit it in `skills/`, bump `version` in `.claude-plugin/plugin.json`, commit and push, then pick it up with:
-
-```bash
-claude plugin marketplace update repo-tools
-claude plugin update koysor-skills@repo-tools
-```
+To change a skill, edit it in `skills/`, bump `version` in `.claude-plugin/plugin.json`, commit and push, then pick it up on each machine with `uv run install_workspace.py --update` (or `sync-check`), which runs `claude plugin marketplace update repo-tools` and `claude plugin update koysor-skills@repo-tools`.
 
 ## Development
 
