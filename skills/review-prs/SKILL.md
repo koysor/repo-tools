@@ -1,15 +1,15 @@
 ---
 name: review-prs
-description: Review every open pull request across the sibling repos in C:\Repos (the parent folder of repo-tools), summarise each one from its diff, recommend whether to merge, ask the user which to merge, then squash-merge the approved ones with review_prs.py. Use when the user asks to review, triage, summarise or merge pending/open PRs or Dependabot updates across their repos.
+description: Review every open pull request across the sibling repos in the folder that holds the repo-tools clone, summarise each one from its diff, recommend whether to merge, ask the user which to merge, then squash-merge the approved ones with review_prs.py. Use when the user asks to review, triage, summarise or merge pending/open PRs or Dependabot updates across their repos.
 ---
 
 # Review and merge open pull requests
 
-`review_prs.py` (in the `repo-tools` clone, normally `C:\Repos\repo-tools`) does the gathering, the rule-based verdict and the merging. Your job is to add a real review of each diff on top, let the user choose, and merge only what they approve.
+`review_prs.py` (in the `repo-tools` clone) does the gathering, the rule-based verdict and the merging. Your job is to add a real review of each diff on top, let the user choose, and merge only what they approve.
 
 ## 1. Gather
 
-Run from the folder that holds the repos (normally `C:\Repos`):
+All commands in this skill run from the folder that holds the sibling repos, the parent of the `repo-tools` clone (e.g. `C:\Repos` on Windows, `~/repos` on Linux or macOS). If the session started inside one of the repos, run them from its parent (`cd ..` in the same command, or adjust the paths to `../repo-tools/...` and `--root ..`). If there is no `repo-tools` folder there, ask the user where it is cloned.
 
 ```bash
 uv run --project repo-tools repo-tools/review_prs.py --json --root .
