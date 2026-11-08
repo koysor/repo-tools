@@ -2,16 +2,23 @@
 
 Small scripts for working across a folder of sibling git repos.
 
-## sync-check (Windows)
+## sync-check
 
-`sync-check.cmd` (or `sync-check.ps1`) runs the scripts below against the parent folder in one go: `repo_status.py --fetch`, then asks whether to run `sync_repos.py`, then `install_workspace.py --update`.
+`sync-check` runs the scripts below against the parent folder in one go: `repo_status.py --fetch`, then asks whether to run `sync_repos.py`, then `install_workspace.py --update`.
 
 ```powershell
-.\repo-tools\sync-check.cmd        # from the repos folder
+# Windows, from the repos folder
+.\repo-tools\sync-check.cmd        # or sync-check.ps1
 .\repo-tools\sync-check.ps1 -Yes   # sync without the first prompt (sync_repos.py still asks per repo)
 ```
 
-Without a usable console it skips the sync prompt and does not sync unless `-Yes` is given. To keep running `.\sync-check.cmd` from the repos folder itself, add a forwarder there containing `@call "%~dp0repo-tools\sync-check.cmd" %*`.
+```bash
+# Linux / macOS, from anywhere
+repo-tools/sync-check.sh
+repo-tools/sync-check.sh --yes
+```
+
+Without an interactive console it skips the sync prompt and does not sync unless `-Yes` / `--yes` is given. To keep running `.\sync-check.cmd` from the repos folder itself, add a forwarder there containing `@call "%~dp0repo-tools\sync-check.cmd" %*`.
 
 ## repo_status.py
 

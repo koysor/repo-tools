@@ -34,7 +34,7 @@ Follow the guidance file of the repo you are working in; it takes precedence ove
 .\repo-tools\sync-check.ps1 -Yes   # same, without the prompt
 ```
 
-The scripts live in `repo-tools` (Windows only). This machine may also have forwarders at `.\sync-check.cmd` / `.\sync-check.ps1` in the repos folder; they are not in git. `sync-check.ps1` wraps scripts from `repo-tools`. To run them directly:
+On Linux or macOS use `repo-tools/sync-check.sh` (`--yes` to skip the prompt). The scripts live in `repo-tools`. This machine may also have forwarders at `.\sync-check.cmd` / `.\sync-check.ps1` in the repos folder; they are not in git. `sync-check.ps1` wraps scripts from `repo-tools`. To run them directly:
 
 ```bash
 uv run --project repo-tools repo-tools/repo_status.py --fetch --root .   # read-only report
