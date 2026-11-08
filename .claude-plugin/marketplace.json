@@ -1,0 +1,14 @@
+{
+  "name": "repo-tools",
+  "description": "Claude Code skills shared across the koysor sibling repos",
+  "owner": {
+    "name": "Mohammed Koysor"
+  },
+  "plugins": [
+    {
+      "name": "koysor-skills",
+      "source": "./",
+      "description": "Skills shared across the koysor sibling repos: reviewing open PRs and writing marimo notebooks"
+    }
+  ]
+}

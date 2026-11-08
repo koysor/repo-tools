@@ -1,0 +1,8 @@
+{
+  "name": "koysor-skills",
+  "version": "0.1.0",
+  "description": "Skills shared across the koysor sibling repos: reviewing open PRs and writing marimo notebooks",
+  "author": {
+    "name": "Mohammed Koysor"
+  }
+}

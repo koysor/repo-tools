@@ -5,7 +5,7 @@ description: Review every open pull request across the sibling repos in C:\Repos
 
 # Review and merge open pull requests
 
-`review_prs.py` (next to this skill's repo root) does the gathering, the rule-based verdict and the merging. Your job is to add a real review of each diff on top, let the user choose, and merge only what they approve.
+`review_prs.py` (in the `repo-tools` clone, normally `C:\Repos\repo-tools`) does the gathering, the rule-based verdict and the merging. Your job is to add a real review of each diff on top, let the user choose, and merge only what they approve.
 
 ## 1. Gather
 

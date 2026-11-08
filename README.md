@@ -101,7 +101,30 @@ At the prompt, `a(ll)` merges this PR and every remaining **merge**-verdict PR; 
 
 ### Claude skill
 
-`.claude/skills/review-prs/SKILL.md` builds on the script: Claude runs `--json`, reads each PR's diff and release notes, writes a short risk summary next to the script's verdict, asks which PRs to merge, and merges only those with `--merge`. Ask Claude Code to "review the open PRs" from `C:\Repos` or `repo-tools`.
+`skills/review-prs/SKILL.md` builds on the script: Claude runs `--json`, reads each PR's diff and release notes, writes a short risk summary next to the script's verdict, asks which PRs to merge, and merges only those with `--merge`. Ask Claude Code to "review the open PRs" from `C:\Repos` or any repo. It is part of the `koysor-skills` plugin below.
+
+## Shared Claude Code skills (`koysor-skills` plugin)
+
+This repo is also a Claude Code plugin marketplace. Skills in `skills/` are shared by every repo once the plugin is installed at user scope; skills that only make sense in one repo stay in that repo's `.claude/skills/`.
+
+| Skill | What it does |
+|---|---|
+| `koysor-skills:review-prs` | Reviews and merges open PRs across the sibling repos with `review_prs.py` |
+| `koysor-skills:marimo-helper` | Rules for marimo notebooks: unique globals, reactive dependencies, browser limits |
+
+Install once per machine:
+
+```bash
+claude plugin marketplace add koysor/repo-tools
+claude plugin install koysor-skills@repo-tools --scope user
+```
+
+To change a skill, edit it in `skills/`, bump `version` in `.claude-plugin/plugin.json`, commit and push, then pick it up with:
+
+```bash
+claude plugin marketplace update repo-tools
+claude plugin update koysor-skills@repo-tools
+```
 
 ## Development
 
