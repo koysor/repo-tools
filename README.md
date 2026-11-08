@@ -136,7 +136,7 @@ uv run install_workspace.py --no-plugin # only the CLAUDE.md copy
 uv run install_workspace.py --root PATH
 ```
 
-Exit codes: 0 set up, 1 `--check` found something missing, 2 a `claude` command failed or `--root` is not a folder. `sync-check.ps1` runs it with `--update`.
+Exit codes: 0 set up, 1 `--check` found something missing, 2 a `claude` command failed or `--root` is not a folder. `sync-check` runs it with `--update`.
 
 Edit `workspace/CLAUDE.md` here, commit it and re-run the script; never edit the copy. It is a copy rather than an `@repo-tools/workspace/CLAUDE.md` import because Claude Code asks for approval of an import from outside the project once in every repo, and ignores it until then.
 
@@ -166,6 +166,10 @@ uv run pytest
 uv run ruff check .
 uv run ruff format --check .
 uv run ty check
+claude plugin validate .                            # plugin and marketplace manifests
+uvx --from shellcheck-py shellcheck sync-check.sh
 ```
 
-The tests build throwaway local bare remotes and clones, so they need no network.
+The tests build throwaway local bare remotes and clones, and fake `gh` and `claude` with callables, so they need no network, GitHub login or Claude Code install.
+
+`.gitattributes` keeps `.ps1`/`.cmd` files CRLF and `.sh` files LF. `sync-check.sh` is committed executable; when adding a shell script on Windows, set the bit with `git update-index --chmod=+x <file>`.

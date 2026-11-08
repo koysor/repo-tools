@@ -14,7 +14,7 @@ Run git, `uv` and test commands from inside the relevant repo, or point at it wi
 | `maths-python` | Streamlit app of maths and statistics snippets, with `src/maths_lib` | `maths-python/CLAUDE.md` |
 | `quant-finance` | Four Streamlit apps on top of the `src/quant_finance` library | `quant-finance/CLAUDE.md` |
 | `quant-finance-flash-cards` | Flask app serving Markdown flash cards as a knowledge graph | `quant-finance-flash-cards/CLAUDE.md` |
-| `repo-tools` | Scripts for checking and syncing all the sibling repos | `repo-tools/README.md` |
+| `repo-tools` | Scripts for checking and syncing all the sibling repos, machine setup, this file, and the shared `koysor-skills` Claude plugin | `repo-tools/README.md` |
 | `dataframe-compare` | Placeholder, no code yet | `README.md` |
 | `football-scores` | Placeholder, no code yet; will predict match scores from Betfair odds | `README.md` |
 
@@ -34,11 +34,12 @@ Follow the guidance file of the repo you are working in; it takes precedence ove
 .\repo-tools\sync-check.ps1 -Yes   # same, without the prompt
 ```
 
-On Linux or macOS use `repo-tools/sync-check.sh` (`--yes` to skip the prompt). The scripts live in `repo-tools`. This machine may also have forwarders at `.\sync-check.cmd` / `.\sync-check.ps1` in the repos folder; they are not in git. `sync-check.ps1` wraps scripts from `repo-tools`. To run them directly:
+On Linux or macOS use `repo-tools/sync-check.sh` (`--yes` to skip the prompt). The scripts live in `repo-tools`. This machine may also have forwarders at `.\sync-check.cmd` / `.\sync-check.ps1` in the repos folder; they are not in git. To run the underlying scripts directly:
 
 ```bash
 uv run --project repo-tools repo-tools/repo_status.py --fetch --root .   # read-only report
 uv run --project repo-tools repo-tools/sync_repos.py --check --root .    # report only; exit 1 if any repo is behind
+uv run --project repo-tools repo-tools/install_workspace.py --update     # refresh this CLAUDE.md copy and the koysor-skills plugin
 ```
 
 `repo_status.py` exit codes are a report rather than a failure: 0 means clean, 1 means something needs committing, pushing, pulling or finishing, and 2 means a repo could not be inspected.
@@ -52,7 +53,7 @@ uv run --project repo-tools repo-tools/review_prs.py --root .           # same, 
 
 The `koysor-skills:review-prs` skill adds a Claude review of each diff on top and merges only what the user selects, via `--merge REPO#N@SHA`. After merging, the local clones are behind; pull with `sync_repos.py`.
 
-`sync_repos.py` rebases onto incoming commits rather than merging. Without `--check` it can rewrite local history, and `sync-check.ps1 -Yes` skips only the first prompt (`sync_repos.py` still asks per repo). Both scripts discover repos by scanning the parent folder, so a new sibling repo is picked up automatically.
+`sync_repos.py` rebases onto incoming commits rather than merging. Without `--check` it can rewrite local history, and `sync-check -Yes` / `sync-check.sh --yes` skips only the first prompt (`sync_repos.py` still asks per repo). Both scripts discover repos by scanning the parent folder, so a new sibling repo is picked up automatically.
 
 ## Developing repo-tools
 
@@ -66,9 +67,13 @@ uv run pytest tests/test_repo_status.py::test_clean_repo   # one test
 uv run ruff check .
 uv run ruff format --check .
 uv run ty check
+claude plugin validate .                        # plugin and marketplace manifests
+uvx --from shellcheck-py shellcheck sync-check.sh
 ```
 
+- Layout: the Python scripts at the root; `sync-check.{ps1,cmd,sh}`; `workspace/CLAUDE.md` (the source of this file); `skills/` plus `.claude-plugin/{plugin,marketplace}.json` (the `koysor-skills` plugin, whose root is the repo root). Bump `version` in `plugin.json` whenever a skill changes, or `claude plugin update` will not pick it up.
+- `.gitattributes` keeps `.ps1`/`.cmd` CRLF and `.sh` LF; `sync-check.sh` is committed executable (`git update-index --chmod=+x` on Windows).
 - `repo_status.py`, `review_prs.py` and `install_workspace.py` import their git plumbing or `--root` handling from `sync_repos.py`, so the files must stay together.
-- `review_prs.py` tests fake `gh` with a callable, so they need no network or GitHub login either.
+- `review_prs.py` tests fake `gh` with a callable, and `install_workspace.py` tests fake `claude` the same way, so they need no network, GitHub login or Claude Code install.
 - Tests build throwaway local bare remotes and clones, so they need no network.
 - The ruff rule set is pinned deliberately in `pyproject.toml` because ruff is unpinned in CI. `sync_repos.py` carries targeted `noqa` comments for the subprocess rules (S603, S607) instead of a blanket ignore.

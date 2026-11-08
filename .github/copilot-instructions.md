@@ -9,6 +9,7 @@ development dependencies are managed with `uv` (Python 3.14).
 uv sync
 uv run repo_status.py
 uv run sync_repos.py --check
+uv run install_workspace.py --check
 uv run pytest
 uv run pytest tests/test_sync_repos.py
 uv run pytest tests/test_sync_repos.py::test_name
@@ -35,7 +36,14 @@ default, or from `--root`; `sync_repos.py` does the same but offers rebases only
 after reporting incoming commits. `sync_repos.py` runs `git fetch --prune` unless
 given `--no-fetch`, so `--check` never rebases or prompts but can still update
 remote-tracking refs. `--yes` rebases every eligible repository without asking.
-`sync-check.ps1` in this repo relies on `--root` (the parent directory) and `--fetch`.
+`sync-check.ps1`/`.cmd` (Windows) and `sync-check.sh` (Linux/macOS) in this repo
+run `repo_status.py --fetch`, an optional `sync_repos.py`, then
+`install_workspace.py --update`, all with `--root` set to the parent directory.
+
+`install_workspace.py` is the per-machine setup: it copies `workspace/CLAUDE.md`
+into the parent directory and installs the `koysor-skills` Claude Code plugin
+(this repo is its marketplace: `.claude-plugin/` manifests, skills in
+`skills/`) through the `claude` CLI, which tests replace with a fake callable.
 Rebase against the exact upstream
 commit shown to the user, skip repositories with uncommitted changes, and abort
 a conflicted rebase rather than leaving a sibling repository mid-operation.
