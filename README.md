@@ -10,7 +10,7 @@ Shows detailed git status for every git repo next to this one, without changing 
 uv run repo_status.py                # report from the last fetch
 uv run repo_status.py --fetch        # fetch first so ahead/behind is current
 uv run repo_status.py --max-files 0  # list every file (default: 10 per category)
-uv run repo_status.py --root PATH    # scan PATH instead of this repo's parent
+uv run repo_status.py --root PATH    # scan PATH instead of this repo's parent (bare --root: the parent)
 ```
 
 Exit codes: 0 everything clean, 1 something to commit, push, pull or finish, 2 a repo could not be inspected (takes precedence), 130 interrupted. Stashes are shown but do not make a repo unclean. It reuses the git plumbing in `sync_repos.py`, so the two scripts need to stay together.
@@ -23,7 +23,7 @@ Checks every git repo next to this one for commits that exist on the remote but 
 uv run sync_repos.py              # fetch, report, then prompt per repo
 uv run sync_repos.py --check      # report only; exit 1 if any repo is behind
 uv run sync_repos.py --yes        # pull every eligible repo without asking
-uv run sync_repos.py --root PATH  # scan PATH instead of this repo's parent
+uv run sync_repos.py --root PATH  # scan PATH instead of this repo's parent (bare --root: the parent)
 uv run sync_repos.py --no-fetch   # compare against the last fetch
 ```
 
@@ -69,7 +69,7 @@ uv run review_prs.py --yes            # merge every PR recommended for merge, wi
 uv run review_prs.py --json           # report as JSON; never merges
 uv run review_prs.py --merge maths-python#9@<head sha> ...   # merge exactly these
 uv run review_prs.py --max-files 0    # list every changed file (default: 10 per PR)
-uv run review_prs.py --root PATH      # scan PATH instead of this repo's parent
+uv run review_prs.py --root PATH      # scan PATH instead of this repo's parent (bare --root: the parent)
 ```
 
 For each PR the report shows the title, author, branch, size, age, changed files, CI checks and a verdict with its reasons:

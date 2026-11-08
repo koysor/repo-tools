@@ -24,6 +24,7 @@ from sync_repos import (
     FIELD_SEP,
     Commit,
     RepoError,
+    add_root_argument,
     discover_repos,
     fetch_prune,
     git_out,
@@ -289,12 +290,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Show detailed git status for sibling git repos."
     )
-    parser.add_argument(
-        "--root",
-        type=Path,
-        default=Path(__file__).resolve().parent.parent,
-        help="directory containing the repos (default: parent of this repo)",
-    )
+    add_root_argument(parser)
     parser.add_argument(
         "--fetch",
         action="store_true",

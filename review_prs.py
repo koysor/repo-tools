@@ -27,7 +27,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from sync_repos import DEPENDENCY_FILES, Choice, RepoError, discover_repos, run_git
+from sync_repos import (
+    DEPENDENCY_FILES,
+    Choice,
+    RepoError,
+    add_root_argument,
+    discover_repos,
+    run_git,
+)
 
 GH_TIMEOUT = 120
 DEFAULT_MAX_FILES = 10
@@ -666,12 +673,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Review open pull requests in sibling repos and merge approved ones."
     )
-    parser.add_argument(
-        "--root",
-        type=Path,
-        default=Path(__file__).resolve().parent.parent,
-        help="directory containing the repos (default: parent of this repo)",
-    )
+    add_root_argument(parser)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
         "--check",

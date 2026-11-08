@@ -1,3 +1,5 @@
+import argparse
+import importlib
 import subprocess
 from pathlib import Path
 
@@ -475,6 +477,44 @@ def test_main_reports_missing_git(world, capsys, monkeypatch):
     monkeypatch.setattr(sync_repos.shutil, "which", lambda _: None)
     assert sync_repos.main(["--root", str(root)]) == 2
     assert "git was not found" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("argv", "expected"),
+    [
+        ([], sync_repos.DEFAULT_ROOT),
+        (["--root"], sync_repos.DEFAULT_ROOT),
+        (["--root", "--check"], sync_repos.DEFAULT_ROOT),
+        (["--root", "elsewhere"], Path("elsewhere")),
+    ],
+)
+def test_root_argument_value_is_optional(argv, expected):
+    parser = argparse.ArgumentParser()
+    sync_repos.add_root_argument(parser)
+    parser.add_argument("--check", action="store_true")
+    assert parser.parse_args(argv).root == expected
+
+
+def test_default_root_is_parent_of_repo_tools():
+    assert Path(sync_repos.__file__).resolve().parent.parent == sync_repos.DEFAULT_ROOT
+
+
+@pytest.mark.parametrize("module", ["sync_repos", "repo_status", "review_prs"])
+def test_every_script_accepts_bare_root(module, monkeypatch):
+    """A bare --root parses in each script and scans the default root."""
+    script = importlib.import_module(module)
+    seen = []
+    monkeypatch.setattr(script, "discover_repos", lambda root: seen.append(root) or [])
+    monkeypatch.setattr(script.shutil, "which", lambda _: "found")
+    if module == "review_prs":
+        monkeypatch.setattr(
+            script,
+            "run_gh",
+            lambda args: subprocess.CompletedProcess(list(args), 0, "", ""),
+        )
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False, raising=False)
+    assert script.main(["--root"]) == 0
+    assert seen == [sync_repos.DEFAULT_ROOT]
 
 
 def test_commit_parse_tolerates_stripped_empty_subject():

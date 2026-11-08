@@ -469,16 +469,28 @@ def sync(
     return 1 if failed else 0
 
 
+DEFAULT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def add_root_argument(parser: argparse.ArgumentParser) -> None:
+    """Add --root [PATH]; a bare --root means the default (the parent of repo-tools)."""
+    parser.add_argument(
+        "--root",
+        type=Path,
+        nargs="?",
+        const=DEFAULT_ROOT,
+        default=DEFAULT_ROOT,
+        metavar="PATH",
+        help="directory containing the repos (default, or with no PATH: "
+        "the parent of this repo)",
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Check sibling git repos for upstream changes and offer to rebase."
     )
-    parser.add_argument(
-        "--root",
-        type=Path,
-        default=Path(__file__).resolve().parent.parent,
-        help="directory containing the repos (default: parent of this repo)",
-    )
+    add_root_argument(parser)
     parser.add_argument(
         "--check",
         action="store_true",
