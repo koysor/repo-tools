@@ -103,6 +103,18 @@ At the prompt, `a(ll)` merges this PR and every remaining **merge**-verdict PR; 
 
 `skills/review-prs/SKILL.md` builds on the script: Claude runs `--json`, reads each PR's diff and release notes, writes a short risk summary next to the script's verdict, asks which PRs to merge, and merges only those with `--merge`. Ask Claude Code to "review the open PRs" from `C:\Repos` or any repo. It is part of the `koysor-skills` plugin below.
 
+## Workspace CLAUDE.md
+
+`workspace/CLAUDE.md` is the Claude Code guidance for the folder that holds all the sibling repos (layout, shared conventions, cross-repo commands). Claude reads it from a copy in that parent folder, which `install_workspace.py` writes:
+
+```bash
+uv run install_workspace.py           # write ../CLAUDE.md (backs up a differing copy to CLAUDE.md.bak)
+uv run install_workspace.py --check   # report only; exit 1 if the copy is missing or out of date
+uv run install_workspace.py --root PATH
+```
+
+Edit `workspace/CLAUDE.md` here, commit it and re-run the script; never edit the copy. It is a copy rather than an `@repo-tools/workspace/CLAUDE.md` import because Claude Code asks for approval of an import from outside the project once in every repo, and ignores it until then.
+
 ## Shared Claude Code skills (`koysor-skills` plugin)
 
 This repo is also a Claude Code plugin marketplace. Skills in `skills/` are shared by every repo once the plugin is installed at user scope; skills that only make sense in one repo stay in that repo's `.claude/skills/`.
