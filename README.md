@@ -123,10 +123,11 @@ At the prompt, `a(ll)` merges this PR and every remaining **merge**-verdict PR; 
 
 ## Machine setup: install_workspace.py
 
-Run once on each machine after cloning, and again whenever you like; it only changes what is missing or out of date. It does two things:
+Run once on each machine after cloning, and again whenever you like; it only changes what is missing or out of date. It does three things:
 
 1. Copies `workspace/CLAUDE.md` (the Claude Code guidance for the folder that holds all the sibling repos: layout, shared conventions, cross-repo commands) into that parent folder, backing up a differing copy to `CLAUDE.md.bak`.
 2. Makes sure the `koysor-skills` plugin below is installed at user scope: adds the `repo-tools` marketplace (`koysor/repo-tools` on GitHub) and installs the plugin if either is missing. A disabled plugin is reported, not re-enabled. Skipped if `claude` is not on PATH.
+3. Compares the installed plugin version with `.claude-plugin/plugin.json` in this checkout. `--check` fails if the installed one is older; a plain run only prints a hint. `--update` lists the plugins again after updating, prints the old and new version, and fails if the installed one is still older, which usually means a version bump has not been pushed to `koysor/repo-tools` yet. An installed version newer than the checkout just suggests pulling repo-tools.
 
 ```bash
 uv run install_workspace.py             # set up anything missing
@@ -136,7 +137,7 @@ uv run install_workspace.py --no-plugin # only the CLAUDE.md copy
 uv run install_workspace.py --root PATH
 ```
 
-Exit codes: 0 set up, 1 `--check` found something missing, 2 a `claude` command failed or `--root` is not a folder. `sync-check` runs it with `--update`.
+Exit codes: 0 set up, 1 `--check` found something missing or out of date, or the plugin is still older than this checkout after an install or `--update`, 2 a `claude` command failed, the plugin is not listed after installing or updating it, or `--root` is not a folder. `sync-check` runs it with `--update`.
 
 Edit `workspace/CLAUDE.md` here, commit it and re-run the script; never edit the copy. It is a copy rather than an `@repo-tools/workspace/CLAUDE.md` import because Claude Code asks for approval of an import from outside the project once in every repo, and ignores it until then.
 
