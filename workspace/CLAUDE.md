@@ -10,22 +10,17 @@ Run git, `uv` and test commands from inside the relevant repo, or point at it wi
 
 | Repo | What it is | Project guidance |
 |---|---|---|
-| `cqf` | Certificate in Quantitative Finance coursework: notebooks, lecture notes, exams. A standalone learning repo: never depends on another repo | `cqf/CLAUDE.md` |
 | `maths-python` | Streamlit app of maths and statistics snippets, with `src/maths_lib` | `maths-python/CLAUDE.md` |
 | `quant-finance` | Four Streamlit apps on top of the `src/quant_finance` library | `quant-finance/CLAUDE.md` |
 | `quant-finance-flash-cards` | Flask app serving Markdown flash cards as a knowledge graph | `quant-finance-flash-cards/CLAUDE.md` |
 | `repo-tools` | Scripts for checking and syncing all the sibling repos, machine setup, this file, and the shared `koysor-skills` Claude plugin | `repo-tools/README.md` |
-| `dataframe-compare` | Placeholder, no code yet | `README.md` |
-| `football-scores` | Placeholder, no code yet; will predict match scores from Betfair odds | `README.md` |
-| `business` | Markdown planning notes for new business ideas, no code | `README.md` |
-| `health` | Markdown planning notes for health objectives (exercise, eating habits), no code | `README.md` |
 
-Follow the guidance file of the repo you are working in; it takes precedence over this file. The placeholder READMEs say to start with `uv init` when work begins.
+The table lists the public repos only. `repo-tools` is public, so private repos are described in `CLAUDE.private.md` in the repos folder, which is not in git; `install_workspace.py` appends it to the copy of this file when it exists. Follow the guidance file of the repo you are working in; it takes precedence over this file.
 
 ## Shared conventions
 
-- `cqf` is a standalone learning repo. Never make it import from or depend on `quant_finance` or another sibling repo, and never move its code into one, even where the library implements the same formula: formulas are written out where they are taught. Library work belongs in `quant-finance` on its own. Tooling changes to `cqf` (formatting, CI, agents) are fine.
-- All Python projects use `uv` and Python 3.14. `cqf` is pinned to exactly 3.14.8; the others use `>=3.14`.
+- All Python projects use `uv` and Python 3.14: `requires-python = ">=3.14"`, or an exact `==3.14.N` pin where a repo's own guidance says so.
+- A repo that must never import from or depend on a sibling repo says so in its own guidance and sets `[tool.repo-tools.conventions] standalone = true` in its `pyproject.toml`, which `check_conventions.py` enforces.
 - Use `uv run <tool>` rather than calling `python`, `pytest` or `ruff` directly. Code in these repos can use 3.14-only syntax that older interpreters reject (for example, unparenthesised `except A, B:`).
 - Claude skills used in more than one repo live in `repo-tools/skills/` and are shared through the `koysor-skills` plugin, which `repo-tools/install_workspace.py` installs at user scope (see `repo-tools/README.md`). Skills specific to one repo stay in that repo's `.claude/skills/<name>/SKILL.md`.
 - On Windows, several repos' guidance and scripts assume a POSIX shell and macOS or Linux tools: the `launch_*.sh` scripts, `source .venv/bin/activate`, `lsof`. Run those through the Bash tool (Git Bash), or use the direct `uv run ...` equivalent; `lsof` needs a Windows substitute.
@@ -55,7 +50,7 @@ uv run --project repo-tools repo-tools/repo_status.py --root . --ci             
 
 `repo_status.py` exit codes are a report rather than a failure: 0 means clean, 1 means something needs committing, pushing, pulling or finishing, and 2 means a repo could not be inspected.
 
-Check every repo against the shared conventions above (README, `requires-python`, committed `uv.lock`, CI workflow, Dependabot, pre-commit, and that `cqf` imports nothing from a sibling repo), and clone any of the owner's GitHub repos missing from this folder (needs `gh`, logged in):
+Check every repo against the shared conventions above (README, `requires-python`, committed `uv.lock`, CI workflow, Dependabot, pre-commit, and that standalone repos import nothing from a sibling repo), and clone any of the owner's GitHub repos missing from this folder (needs `gh`, logged in):
 
 ```bash
 uv run --project repo-tools repo-tools/check_conventions.py --root .   # read-only table; exit 1 if a check fails
@@ -75,7 +70,11 @@ The `koysor-skills:review-prs` skill adds a Claude review of each diff on top an
 
 ## Developing repo-tools
 
-`repo-tools` has no `CLAUDE.md` of its own. Run these from inside `repo-tools`:
+`repo-tools` has no `CLAUDE.md` of its own.
+
+**`repo-tools` is a public repo. Never name, describe or reference a private sibling repo in anything committed to it:** code, tests, docs, examples and sample output, commit messages, and pull request titles and descriptions. Use public repos or made-up names (`app`, `lib`, `notes`) instead, and keep anything specific to a private repo in that repo or in `CLAUDE.private.md`. Check which repos are private with `gh repo list koysor --json name,visibility`.
+
+Run these from inside `repo-tools`:
 
 ```bash
 uv sync
@@ -92,7 +91,6 @@ uvx --from shellcheck-py shellcheck sync-check.sh
 - Layout: the Python scripts at the root; `sync-check.{ps1,cmd,sh}`; `workspace/CLAUDE.md` (the source of this file); `skills/` plus `.claude-plugin/{plugin,marketplace}.json` (the `koysor-skills` plugin, whose root is the repo root). Bump `version` in `plugin.json` whenever a skill changes, or `claude plugin update` will not pick it up.
 - `.gitattributes` keeps `.ps1`/`.cmd` CRLF and `.sh` LF; `sync-check.sh` is committed executable (`git update-index --chmod=+x` on Windows).
 - `repo_status.py`, `review_prs.py`, `install_workspace.py`, `check_all.py`, `check_conventions.py` and `clone_repos.py` import their git plumbing or `--root` handling from `sync_repos.py`; `repo_status.py --ci` and `clone_repos.py` import the gh plumbing from `review_prs.py`, and `check_conventions.py` imports dependency parsing from `check_all.py`, so the files must stay together.
-- `STANDALONE` in `check_conventions.py` mirrors the rule above that `cqf` is standalone; change both together.
 - `review_prs.py` tests fake `gh` with a callable, and `install_workspace.py` tests fake `claude` the same way, so they need no network, GitHub login or Claude Code install.
 - Tests build throwaway local bare remotes and clones, so they need no network.
 - The ruff rule set is pinned deliberately in `pyproject.toml` because ruff is unpinned in CI. `sync_repos.py` carries targeted `noqa` comments for the subprocess rules (S603, S607) instead of a blanket ignore.

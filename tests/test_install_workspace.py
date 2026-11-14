@@ -11,6 +11,7 @@ from install_workspace import (
     MARKETPLACE_SOURCE,
     PLUGIN,
     PLUGIN_MANIFEST,
+    PRIVATE,
     SOURCE,
     install,
     local_version,
@@ -117,6 +118,35 @@ def test_replacing_a_stale_copy_backs_it_up(root, source):
     assert install(root, check=False, source=source) == 0
     assert (root / "CLAUDE.md.bak").read_text(encoding="utf-8") == "edited by hand\n"
     assert (root / "CLAUDE.md").read_text(encoding="utf-8") == rendered(source)
+
+
+def test_private_guidance_is_appended(root, source):
+    (root / PRIVATE).write_text("\n## Private repos\n\n- notes\n\n", encoding="utf-8")
+    assert install(root, check=False, source=source) == 0
+    copy = (root / "CLAUDE.md").read_text(encoding="utf-8")
+    assert copy == (
+        HEADER
+        + "# Shared guidance\n\n"
+        + f"<!-- Appended from {PRIVATE}, which is not in git. -->\n\n"
+        + "## Private repos\n\n- notes\n"
+    )
+    assert install(root, check=True, source=source) == 0
+
+
+def test_changed_private_guidance_makes_the_copy_stale(root, source):
+    (root / PRIVATE).write_text("- notes\n", encoding="utf-8")
+    install(root, check=False, source=source)
+    (root / PRIVATE).write_text("- more notes\n", encoding="utf-8")
+    assert install(root, check=True, source=source) == 1
+    (root / PRIVATE).unlink()
+    assert install(root, check=True, source=source) == 1
+    assert install(root, check=False, source=source) == 0
+    assert (root / "CLAUDE.md").read_text(encoding="utf-8") == rendered(source)
+
+
+def test_empty_private_guidance_adds_nothing(root, source):
+    (root / PRIVATE).write_text("  \n", encoding="utf-8")
+    assert rendered(source, root / PRIVATE) == rendered(source)
 
 
 def test_main_rejects_missing_root(tmp_path):

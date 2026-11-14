@@ -43,7 +43,7 @@ CI (latest run of each workflow):
   maths-python    passing  5 workflows
   quant-finance   failing  failing Tests; running Deploy to EC2
     Tests: failure  https://github.com/koysor/quant-finance/actions/runs/...
-  football-scores no runs
+  notes           no runs
 ```
 
 - The overall result is the worst across workflows: failing, then running, then cancelled, then passing. Success, skipped and neutral all count as passing. Failing workflows are listed with a link to the run.
@@ -65,7 +65,7 @@ uv run check_all.py --tail 0               # show all output of failed steps (de
 
 ```text
 repo                       sync     lint     format   types    tests    time
-cqf                        pass     pass     FAIL     -        pass     30s
+maths-python               pass     pass     FAIL     -        pass     30s
 quant-finance              pass     pass     pass     pass     pass     145s
 ```
 
@@ -99,7 +99,7 @@ Checks every git repo in the parent folder against the shared conventions in `wo
 
 ```bash
 uv run check_conventions.py                   # every repo
-uv run check_conventions.py --repo cqf        # one repo; repeat --repo for more
+uv run check_conventions.py --repo maths-python  # one repo; repeat --repo for more
 uv run check_conventions.py --root PATH       # scan PATH instead of this repo's parent
 ```
 
@@ -111,7 +111,7 @@ uv run check_conventions.py --root PATH       # scan PATH instead of this repo's
 | `ci` | repos with a `pyproject.toml` | `.github/workflows` has a `.yml` or `.yaml` workflow |
 | `dependabot` | repos with a `pyproject.toml` | `.github/dependabot.yml` exists |
 | `pre-commit` | repos with a `pyproject.toml` | `.pre-commit-config.yaml` exists; missing is a warning, not a failure, since no convention requires it |
-| `standalone` | `cqf` (the `STANDALONE` set in the script) | no `.py` file or notebook code cell imports a sibling repo's package, and `pyproject.toml` does not depend on a sibling project. A sibling package is a `src/` folder with an `__init__.py`, or a project name with dashes as underscores. Hidden folders such as `.venv` are skipped |
+| `standalone` | repos whose `pyproject.toml` sets `[tool.repo-tools.conventions] standalone = true` | no `.py` file or notebook code cell imports a sibling repo's package, and `pyproject.toml` does not depend on a sibling project. A sibling package is a `src/` folder with an `__init__.py`, or a project name with dashes as underscores. Hidden folders such as `.venv` are skipped |
 
 Exit codes: 0 no failures (warnings allowed), 1 at least one check failed, 2 `--repo` named an unknown repo, `--root` is not a folder, or git is missing. A cell shows `-` where a check does not apply.
 
@@ -226,7 +226,7 @@ At the prompt, `a(ll)` merges this PR and every remaining **merge**-verdict PR; 
 
 Run once on each machine after cloning, and again whenever you like; it only changes what is missing or out of date. It does three things:
 
-1. Copies `workspace/CLAUDE.md` (the Claude Code guidance for the folder that holds all the sibling repos: layout, shared conventions, cross-repo commands) into that parent folder, backing up a differing copy to `CLAUDE.md.bak`.
+1. Copies `workspace/CLAUDE.md` (the Claude Code guidance for the folder that holds all the sibling repos: layout, shared conventions, cross-repo commands) into that parent folder, backing up a differing copy to `CLAUDE.md.bak`. If that folder has a `CLAUDE.private.md`, it is appended to the copy. That file is for guidance about private repos: it is in no git repo, so it is set up by hand on each machine. A change to it makes the copy out of date, like a change to `workspace/CLAUDE.md`.
 2. Makes sure the `koysor-skills` plugin below is installed at user scope: adds the `repo-tools` marketplace (`koysor/repo-tools` on GitHub) and installs the plugin if either is missing. A disabled plugin is reported, not re-enabled. Skipped if `claude` is not on PATH.
 3. Compares the installed plugin version with `.claude-plugin/plugin.json` in this checkout. `--check` fails if the installed one is older; a plain run only prints a hint. `--update` lists the plugins again after updating, prints the old and new version, and fails if the installed one is still older, which usually means a version bump has not been pushed to `koysor/repo-tools` yet. An installed version newer than the checkout just suggests pulling repo-tools.
 
@@ -261,6 +261,8 @@ claude plugin install koysor-skills@repo-tools --scope user
 To change a skill, edit it in `skills/`, bump `version` in `.claude-plugin/plugin.json`, commit and push, then pick it up on each machine with `uv run install_workspace.py --update` (or `sync-check`), which runs `claude plugin marketplace update repo-tools` and `claude plugin update koysor-skills@repo-tools`.
 
 ## Development
+
+This repo is public. Never name, describe or reference a private sibling repo in anything committed here: code, tests, docs, examples and sample output, commit messages, and pull request titles and descriptions. Use public repos or made-up names (`app`, `lib`, `notes`) instead. Guidance about private repos belongs in those repos or in `CLAUDE.private.md` in the repos folder. `gh repo list koysor --json name,visibility` shows which repos are private.
 
 ```bash
 uv sync

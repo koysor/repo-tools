@@ -12,10 +12,16 @@ each one against the conventions in workspace/CLAUDE.md:
     dependabot  .github/dependabot.yml                            (Python repos)
     pre-commit  .pre-commit-config.yaml; a warning, not a failure (Python repos)
     standalone  no import of, or dependency on, a sibling repo's
-                package                                     (STANDALONE repos)
+                package                                    (standalone repos)
 
-A Python repo is one with a pyproject.toml.  Read-only: nothing is fixed or
-committed.  Standard library only, so `uv run check_conventions.py` just works.
+A Python repo is one with a pyproject.toml.  A repo is standalone when its
+pyproject.toml says so:
+
+    [tool.repo-tools.conventions]
+    standalone = true
+
+Read-only: nothing is fixed or committed.  Standard library only, so
+`uv run check_conventions.py` just works.
 """
 
 import argparse
@@ -38,9 +44,6 @@ from sync_repos import add_root_argument, discover_repos, run_git
 
 CHECKS = ("readme", "python", "lock", "ci", "dependabot", "pre-commit", "standalone")
 PYTHON_CHECKS = frozenset(CHECKS) - {"readme", "standalone"}
-
-# Repos that must never import from or depend on a sibling repo (workspace/CLAUDE.md).
-STANDALONE = frozenset({"cqf"})
 
 # Folders never scanned for imports.
 SKIP_DIRS = frozenset({"node_modules", "__pycache__", "site-packages"})
@@ -96,6 +99,12 @@ def read_pyproject(path: Path) -> dict[str, Any] | None:
         return tomllib.loads(file.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
         raise ValueError(f"cannot read pyproject.toml: {exc}") from exc
+
+
+def is_standalone(pyproject: dict[str, Any] | None) -> bool:
+    """Whether the repo's pyproject.toml declares it standalone."""
+    tool = (pyproject or {}).get("tool", {}).get("repo-tools", {})
+    return tool.get("conventions", {}).get("standalone") is True
 
 
 def check_readme(path: Path) -> CheckResult:
@@ -291,7 +300,7 @@ def check_repo(path: Path, repos: Sequence[Path]) -> RepoReport:
             check_dependabot(path),
             check_pre_commit(path),
         ]
-    if path.name in STANDALONE:
+    if is_standalone(pyproject):
         report.results.append(check_standalone(path, pyproject, repos))
     else:
         report.results.append(CheckResult("standalone", Status.NA))
