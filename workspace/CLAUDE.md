@@ -55,6 +55,13 @@ uv run --project repo-tools repo-tools/repo_status.py --root . --ci             
 
 `repo_status.py` exit codes are a report rather than a failure: 0 means clean, 1 means something needs committing, pushing, pulling or finishing, and 2 means a repo could not be inspected.
 
+Check every repo against the shared conventions above (README, `requires-python`, committed `uv.lock`, CI workflow, Dependabot, pre-commit, and that `cqf` imports nothing from a sibling repo), and clone any of the owner's GitHub repos missing from this folder (needs `gh`, logged in):
+
+```bash
+uv run --project repo-tools repo-tools/check_conventions.py --root .   # read-only table; exit 1 if a check fails
+uv run --project repo-tools repo-tools/clone_repos.py --check --root .  # list missing repos; drop --check to clone them
+```
+
 Open pull requests across all repos (needs `gh`, logged in):
 
 ```bash
@@ -84,7 +91,8 @@ uvx --from shellcheck-py shellcheck sync-check.sh
 
 - Layout: the Python scripts at the root; `sync-check.{ps1,cmd,sh}`; `workspace/CLAUDE.md` (the source of this file); `skills/` plus `.claude-plugin/{plugin,marketplace}.json` (the `koysor-skills` plugin, whose root is the repo root). Bump `version` in `plugin.json` whenever a skill changes, or `claude plugin update` will not pick it up.
 - `.gitattributes` keeps `.ps1`/`.cmd` CRLF and `.sh` LF; `sync-check.sh` is committed executable (`git update-index --chmod=+x` on Windows).
-- `repo_status.py`, `review_prs.py`, `install_workspace.py` and `check_all.py` import their git plumbing or `--root` handling from `sync_repos.py`, and `repo_status.py --ci` imports the gh plumbing from `review_prs.py`, so the files must stay together.
+- `repo_status.py`, `review_prs.py`, `install_workspace.py`, `check_all.py`, `check_conventions.py` and `clone_repos.py` import their git plumbing or `--root` handling from `sync_repos.py`; `repo_status.py --ci` and `clone_repos.py` import the gh plumbing from `review_prs.py`, and `check_conventions.py` imports dependency parsing from `check_all.py`, so the files must stay together.
+- `STANDALONE` in `check_conventions.py` mirrors the rule above that `cqf` is standalone; change both together.
 - `review_prs.py` tests fake `gh` with a callable, and `install_workspace.py` tests fake `claude` the same way, so they need no network, GitHub login or Claude Code install.
 - Tests build throwaway local bare remotes and clones, so they need no network.
 - The ruff rule set is pinned deliberately in `pyproject.toml` because ruff is unpinned in CI. `sync_repos.py` carries targeted `noqa` comments for the subprocess rules (S603, S607) instead of a blanket ignore.
