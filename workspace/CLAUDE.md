@@ -10,7 +10,7 @@ Run git, `uv` and test commands from inside the relevant repo, or point at it wi
 
 | Repo | What it is | Project guidance |
 |---|---|---|
-| `cqf` | Certificate in Quantitative Finance coursework: notebooks, lecture notes, exams | `cqf/CLAUDE.md` |
+| `cqf` | Certificate in Quantitative Finance coursework: notebooks, lecture notes, exams. A standalone learning repo: never depends on another repo | `cqf/CLAUDE.md` |
 | `maths-python` | Streamlit app of maths and statistics snippets, with `src/maths_lib` | `maths-python/CLAUDE.md` |
 | `quant-finance` | Four Streamlit apps on top of the `src/quant_finance` library | `quant-finance/CLAUDE.md` |
 | `quant-finance-flash-cards` | Flask app serving Markdown flash cards as a knowledge graph | `quant-finance-flash-cards/CLAUDE.md` |
@@ -24,6 +24,7 @@ Follow the guidance file of the repo you are working in; it takes precedence ove
 
 ## Shared conventions
 
+- `cqf` is a standalone learning repo. Never make it import from or depend on `quant_finance` or another sibling repo, and never move its code into one, even where the library implements the same formula: formulas are written out where they are taught. Library work belongs in `quant-finance` on its own. Tooling changes to `cqf` (formatting, CI, agents) are fine.
 - All Python projects use `uv` and Python 3.14. `cqf` is pinned to exactly 3.14.8; the others use `>=3.14`.
 - Use `uv run <tool>` rather than calling `python`, `pytest` or `ruff` directly. Code in these repos can use 3.14-only syntax that older interpreters reject (for example, unparenthesised `except A, B:`).
 - Claude skills used in more than one repo live in `repo-tools/skills/` and are shared through the `koysor-skills` plugin, which `repo-tools/install_workspace.py` installs at user scope (see `repo-tools/README.md`). Skills specific to one repo stay in that repo's `.claude/skills/<name>/SKILL.md`.
