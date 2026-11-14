@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Linux/macOS counterpart of sync-check.ps1: runs repo_status, then asks whether
-# to run sync_repos, then install_workspace --update (all from this repo,
-# repo-tools) against the folder that holds the sibling repos.
+# Linux/macOS counterpart of sync-check.ps1: runs clone_repos (which asks before
+# cloning missing GitHub repos), repo_status, then asks whether to run
+# sync_repos, then install_workspace --update (all from this repo, repo-tools)
+# against the folder that holds the sibling repos.
 # Without an interactive terminal it skips the prompt and does not sync, unless
 # -y/--yes is given.
 set -uo pipefail
@@ -174,6 +175,21 @@ if $animate; then
     echo
 else
     echo "== repo status + sync =="
+fi
+echo
+
+# Clone any of the owner's GitHub repos that are missing here (it asks first),
+# before the status report so new clones show up in it.
+if command -v gh > /dev/null; then
+    uv run --project "$project" "$project/clone_repos.py" --root "$root"
+    clone_exit=$?
+    case "$clone_exit" in
+        0) add_step ok "every GitHub repo is cloned" ;;
+        1) add_step skip "some GitHub repos are not cloned (see above)" ;;
+        *) add_step fail "clone_repos could not check GitHub (exit $clone_exit)" ;;
+    esac
+else
+    add_step skip "clone check skipped: gh is not installed"
 fi
 echo
 

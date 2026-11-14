@@ -1,5 +1,6 @@
-# Runs repo_status, then asks whether to run sync_repos, then install_workspace
-# (all from this repo, repo-tools) against the folder that holds the sibling repos.
+# Runs clone_repos (which asks before cloning missing GitHub repos), repo_status,
+# then asks whether to run sync_repos, then install_workspace (all from this repo,
+# repo-tools) against the folder that holds the sibling repos.
 # Without a usable console (-NonInteractive, piped input) it skips the prompt and
 # does not sync, unless -Yes is given.
 param(
@@ -139,6 +140,20 @@ if ($animate) {
 }
 
 $steps = @()
+
+# Clone any of the owner's GitHub repos that are missing here (it asks first),
+# before the status report so new clones show up in it.
+if (Get-Command gh -ErrorAction SilentlyContinue) {
+    uv run --project $project (Join-Path $project 'clone_repos.py') --root $root
+    $steps += switch ($LASTEXITCODE) {
+        0 { @{ State = 'ok'; Text = 'every GitHub repo is cloned' } }
+        1 { @{ State = 'skip'; Text = 'some GitHub repos are not cloned (see above)' } }
+        default { @{ State = 'fail'; Text = "clone_repos could not check GitHub (exit $LASTEXITCODE)" } }
+    }
+} else {
+    $steps += @{ State = 'skip'; Text = 'clone check skipped: gh is not installed' }
+}
+Write-Host ''
 
 # repo_status exits 1 when something needs attention, which is a report, not a failure.
 uv run --project $project (Join-Path $project 'repo_status.py') --fetch --root $root
