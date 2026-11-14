@@ -3,10 +3,12 @@
 Scans the parent directory of this repo (or --root) for git repos and reports,
 for each one, the branch, how far it is ahead of or behind its upstream, the
 staged, unstaged, untracked and conflicted files, stashes, any operation left
-half-finished, and the last commit.  Standard library only, so
-`uv run repo_status.py` just works.
+half-finished, and the last commit.  With --ci it also shows the latest GitHub
+Actions run of each workflow on each repo's branch, using the `gh` CLI.
+Standard library only, so `uv run repo_status.py` just works.
 
-Reuses the git plumbing from sync_repos.py.  Needs git >= 2.21 (`%as` date format).
+Reuses the git plumbing from sync_repos.py and the gh plumbing from
+review_prs.py.  Needs git >= 2.21 (`%as` date format); --ci needs `gh`, logged in.
 """
 
 import argparse
@@ -19,7 +21,9 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
+from review_prs import GhError, GhRunner, gh_json, repo_slug, run_gh
 from sync_repos import (
     FIELD_SEP,
     Commit,
@@ -33,9 +37,93 @@ from sync_repos import (
 )
 
 DEFAULT_MAX_FILES = 10
+CI_RUN_LIMIT = 50  # recent runs scanned for the latest one of each workflow
+CI_FIELDS = "workflowName,status,conclusion,headSha,url,createdAt,event"
 
 BOLD = "1"
+RED = "31"
+GREEN = "32"
 YELLOW = "33"
+
+PASSING_CONCLUSIONS = ("success", "skipped", "neutral")
+
+
+@dataclass(frozen=True, slots=True)
+class WorkflowRun:
+    workflow: str
+    status: str  # queued, in_progress, completed, ...
+    conclusion: str  # success, failure, cancelled, ... ("" until completed)
+    sha: str
+    url: str
+
+    @classmethod
+    def from_gh(cls, data: dict[str, Any]) -> WorkflowRun:
+        return cls(
+            workflow=data.get("workflowName") or "unnamed workflow",
+            status=(data.get("status") or "").lower(),
+            conclusion=(data.get("conclusion") or "").lower(),
+            sha=data.get("headSha") or "",
+            url=data.get("url") or "",
+        )
+
+    @property
+    def outcome(self) -> str:
+        """passing, failing, running or cancelled."""
+        if self.status != "completed":
+            return "running"
+        if self.conclusion in PASSING_CONCLUSIONS:
+            return "passing"
+        if self.conclusion == "cancelled":
+            return "cancelled"
+        return "failing"  # failure, timed_out, startup_failure, action_required, ...
+
+
+@dataclass(slots=True)
+class CiStatus:
+    runs: list[WorkflowRun] = field(default_factory=list)  # latest per workflow
+
+    @property
+    def outcome(self) -> str:
+        """The worst outcome across workflows, or "no runs"."""
+        outcomes = {run.outcome for run in self.runs}
+        for outcome in ("failing", "running", "cancelled", "passing"):
+            if outcome in outcomes:
+                return outcome
+        return "no runs"
+
+
+def latest_per_workflow(data: list[dict[str, Any]]) -> list[WorkflowRun]:
+    """The newest run of each workflow; gh lists runs newest first."""
+    latest: dict[str, WorkflowRun] = {}
+    for item in data:
+        run = WorkflowRun.from_gh(item)
+        latest.setdefault(run.workflow, run)
+    return sorted(latest.values(), key=lambda run: run.workflow.lower())
+
+
+def ci_status(path: Path, branch: str, gh: GhRunner) -> CiStatus:
+    """Latest run of each workflow on `branch` of `path`'s GitHub repo.
+
+    Raises RepoError (no GitHub origin) or GhError (gh failed).
+    """
+    data = gh_json(
+        gh,
+        [
+            "run",
+            "list",
+            "-R",
+            repo_slug(path),
+            "--branch",
+            branch,
+            "--limit",
+            str(CI_RUN_LIMIT),
+            "--json",
+            CI_FIELDS,
+        ],
+    )
+    if not isinstance(data, list):
+        raise GhError("gh run list did not return a list")
+    return CiStatus(latest_per_workflow(data))
 
 
 @dataclass(slots=True)
@@ -55,6 +143,10 @@ class RepoStatus:
     last_commit: Commit | None = None  # None for a repo with no commits yet
     fetch_error: str | None = None
     error: str | None = None  # a git command failed; state is unreliable
+    upstream_sha: str | None = None  # the commit CI should have run on
+    ci: CiStatus | None = None  # None when CI was not asked for or not checked
+    ci_note: str | None = None  # why CI was not checked, when that is expected
+    ci_error: str | None = None  # gh failed, so the CI state is unknown
 
     @property
     def name(self) -> str:
@@ -76,7 +168,13 @@ class RepoStatus:
             return self.error
         if self.fetch_error:
             return f"fetch failed: {self.fetch_error}"
+        if self.ci_error:
+            return f"CI status unknown: {self.ci_error}"
         return None
+
+    @property
+    def ci_failing(self) -> bool:
+        return self.ci is not None and self.ci.outcome == "failing"
 
 
 def _parse_header(status: RepoStatus, header: str) -> None:
@@ -133,6 +231,26 @@ def parse_porcelain(status: RepoStatus, output: str) -> None:
                 raise ValueError(f"unexpected status record: {record!r}")
 
 
+def _inspect_ci(status: RepoStatus, gh: GhRunner) -> None:
+    if status.branch is None:
+        status.ci_note = "detached HEAD"
+        return
+    if status.upstream and not status.upstream_gone:
+        done = run_git(status.path, "rev-parse", "@{upstream}")
+        if done.returncode == 0:
+            status.upstream_sha = done.stdout.strip()
+    # Runs are listed for the upstream branch name when it differs locally.
+    branch = status.branch
+    if status.upstream and "/" in status.upstream:
+        branch = status.upstream.split("/", 1)[1]
+    try:
+        status.ci = ci_status(status.path, branch, gh)
+    except RepoError as exc:  # no origin, or not on GitHub: nothing to check
+        status.ci_note = str(exc)
+    except (GhError, KeyError, TypeError, ValueError) as exc:
+        status.ci_error = str(exc)
+
+
 def _inspect(status: RepoStatus, fetch: bool) -> None:
     path = status.path
     if fetch:
@@ -151,8 +269,10 @@ def _inspect(status: RepoStatus, fetch: bool) -> None:
         status.last_commit = Commit.parse(log.stdout.strip())
 
 
-def inspect_repo(path: Path, fetch: bool = False) -> RepoStatus:
-    """Describe the state of `path`.
+def inspect_repo(
+    path: Path, fetch: bool = False, gh: GhRunner | None = None
+) -> RepoStatus:
+    """Describe the state of `path`, and its CI runs when `gh` is given.
 
     Never raises for a misbehaving repo: the failure is recorded on the status
     so one bad repo cannot hide the report for the others.
@@ -162,6 +282,9 @@ def inspect_repo(path: Path, fetch: bool = False) -> RepoStatus:
         _inspect(status, fetch)
     except (OSError, subprocess.SubprocessError, RepoError, ValueError) as exc:
         status.error = str(exc)
+        return status
+    if gh is not None:
+        _inspect_ci(status, gh)
     return status
 
 
@@ -228,12 +351,66 @@ def _render_repo(
     return [*lines, ""]
 
 
+OUTCOME_COLORS = {
+    "failing": RED,
+    "running": YELLOW,
+    "cancelled": YELLOW,
+    "passing": GREEN,
+}
+
+
+def _render_ci(
+    statuses: list[RepoStatus], paint: Callable[[str, str], str]
+) -> list[str]:
+    """One line per repo with its overall CI outcome; failures get their URLs."""
+    checked = [s for s in statuses if s.ci is not None or s.ci_note]
+    if not checked:
+        return []
+    width = max(len(s.name) for s in checked)
+    lines = [paint("CI (latest run of each workflow):", BOLD)]
+    for status in checked:
+        name = status.name.ljust(width)
+        if status.ci is None:
+            lines.append(f"  {name}  not checked: {status.ci_note}")
+            continue
+        outcome = status.ci.outcome
+        by_outcome: dict[str, list[str]] = {}
+        for run in status.ci.runs:
+            by_outcome.setdefault(run.outcome, []).append(run.workflow)
+        detail = "; ".join(
+            f"{label} {', '.join(names)}"
+            for label, names in by_outcome.items()
+            if label != "passing"
+        )
+        if outcome == "passing":
+            detail = f"{len(status.ci.runs)} workflows"
+        # Path filters mean not every workflow runs on every commit, so only
+        # flag the case where nothing at all has run on the pushed commit.
+        not_run_on_head = bool(
+            status.upstream_sha
+            and status.ci.runs
+            and all(r.sha != status.upstream_sha for r in status.ci.runs)
+        )
+        line = f"  {name}  {paint(outcome, OUTCOME_COLORS.get(outcome, BOLD))}"
+        if outcome != "no runs":
+            line += f"  {detail}"
+        if not_run_on_head and status.upstream_sha:
+            line += f"  (nothing has run on {status.upstream_sha[:7]} yet)"
+        lines.append(line)
+        lines.extend(
+            f"    {run.workflow}: {run.conclusion or run.status}  {run.url}"
+            for run in status.ci.runs
+            if run.outcome == "failing"
+        )
+    return [*lines, ""]
+
+
 def render_report(
     statuses: list[RepoStatus],
     color: bool = False,
     max_files: int = DEFAULT_MAX_FILES,
 ) -> str:
-    """Describe every repo with something to do, then problems, then clean repos."""
+    """Describe every repo with something to do, CI, problems, then clean repos."""
 
     def paint(text: str, code: str) -> str:
         return f"\033[{code}m{text}\033[0m" if color else text
@@ -242,6 +419,8 @@ def render_report(
     for status in statuses:
         if not status.error and not status.clean:
             lines += _render_repo(status, max_files, paint)
+
+    lines += _render_ci(statuses, paint)
 
     problems = [(s, s.problem) for s in statuses if s.problem]
     if problems:
@@ -261,20 +440,27 @@ def status_all(
     fetch: bool = False,
     color: bool = False,
     max_files: int = DEFAULT_MAX_FILES,
+    gh: GhRunner | None = None,
     out: Callable[[str], None] = lambda text: print(text, end=""),
 ) -> int:
-    """Run the whole report; returns the process exit code."""
+    """Run the whole report; returns the process exit code.
+
+    With `gh`, CI runs are checked too and a failing workflow makes the exit
+    code 1, like uncommitted work does.
+    """
     repos = discover_repos(root)
     if not repos:
         out(f"No git repos found in {root}\n")
         return 0
 
     with ThreadPoolExecutor(max_workers=min(8, len(repos))) as pool:
-        statuses = list(pool.map(lambda p: inspect_repo(p, fetch), repos))
+        statuses = list(pool.map(lambda p: inspect_repo(p, fetch, gh), repos))
 
     out(render_report(statuses, color, max_files))
     if any(s.problem for s in statuses):
         return 2
+    if any(s.ci_failing for s in statuses):
+        return 1
     return 0 if all(s.clean for s in statuses) else 1
 
 
@@ -304,11 +490,18 @@ def main(argv: list[str] | None = None) -> int:
         help="files listed per category per repo, 0 for all "
         f"(default: {DEFAULT_MAX_FILES})",
     )
+    parser.add_argument(
+        "--ci",
+        action="store_true",
+        help="also show the latest GitHub Actions run of each workflow on each "
+        "repo's branch (needs gh, logged in); a failing workflow makes the exit code 1",
+    )
     args = parser.parse_args(argv)
 
-    if shutil.which("git") is None:
-        print("repo_status: git was not found on PATH", file=sys.stderr)
-        return 2
+    for tool in ("git", *(["gh"] if args.ci else [])):
+        if shutil.which(tool) is None:
+            print(f"repo_status: {tool} was not found on PATH", file=sys.stderr)
+            return 2
 
     if isinstance(sys.stdout, io.TextIOWrapper):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -319,6 +512,7 @@ def main(argv: list[str] | None = None) -> int:
             # NO_COLOR applies only when set to a non-empty value.
             color=sys.stdout.isatty() and not os.environ.get("NO_COLOR"),
             max_files=args.max_files,
+            gh=run_gh if args.ci else None,
         )
     except KeyboardInterrupt:
         return 130

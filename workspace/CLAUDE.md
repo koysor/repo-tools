@@ -44,6 +44,14 @@ uv run --project repo-tools repo-tools/sync_repos.py --check --root .    # repor
 uv run --project repo-tools repo-tools/install_workspace.py --update     # refresh this CLAUDE.md copy and the koysor-skills plugin
 ```
 
+Lint, format, type checks and tests across every Python repo, as one pass/fail table (see `repo-tools/README.md` for per-repo overrides):
+
+```bash
+uv run --project repo-tools repo-tools/check_all.py --root .                      # every repo, every step
+uv run --project repo-tools repo-tools/check_all.py --root . --repo quant-finance # one repo
+uv run --project repo-tools repo-tools/repo_status.py --root . --ci               # git status plus latest GitHub Actions results
+```
+
 `repo_status.py` exit codes are a report rather than a failure: 0 means clean, 1 means something needs committing, pushing, pulling or finishing, and 2 means a repo could not be inspected.
 
 Open pull requests across all repos (needs `gh`, logged in):
@@ -75,7 +83,7 @@ uvx --from shellcheck-py shellcheck sync-check.sh
 
 - Layout: the Python scripts at the root; `sync-check.{ps1,cmd,sh}`; `workspace/CLAUDE.md` (the source of this file); `skills/` plus `.claude-plugin/{plugin,marketplace}.json` (the `koysor-skills` plugin, whose root is the repo root). Bump `version` in `plugin.json` whenever a skill changes, or `claude plugin update` will not pick it up.
 - `.gitattributes` keeps `.ps1`/`.cmd` CRLF and `.sh` LF; `sync-check.sh` is committed executable (`git update-index --chmod=+x` on Windows).
-- `repo_status.py`, `review_prs.py` and `install_workspace.py` import their git plumbing or `--root` handling from `sync_repos.py`, so the files must stay together.
+- `repo_status.py`, `review_prs.py`, `install_workspace.py` and `check_all.py` import their git plumbing or `--root` handling from `sync_repos.py`, and `repo_status.py --ci` imports the gh plumbing from `review_prs.py`, so the files must stay together.
 - `review_prs.py` tests fake `gh` with a callable, and `install_workspace.py` tests fake `claude` the same way, so they need no network, GitHub login or Claude Code install.
 - Tests build throwaway local bare remotes and clones, so they need no network.
 - The ruff rule set is pinned deliberately in `pyproject.toml` because ruff is unpinned in CI. `sync_repos.py` carries targeted `noqa` comments for the subprocess rules (S603, S607) instead of a blanket ignore.

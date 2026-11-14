@@ -1,12 +1,16 @@
 import argparse
+import json
 import subprocess
 from pathlib import Path
 
 import pytest
 
 from repo_status import (
+    CiStatus,
     RepoStatus,
+    WorkflowRun,
     inspect_repo,
+    latest_per_workflow,
     main,
     non_negative_int,
     parse_porcelain,
@@ -211,3 +215,185 @@ def test_clean_list_flags_repos_git_cannot_fully_vouch_for(repo):
     git(repo, "checkout", "-q", "-b", "local-only")
     report = render_report([inspect_repo(repo)])
     assert report == "Clean: alpha (no upstream)\n"
+
+
+# --- CI status (--ci) -------------------------------------------------------
+
+
+def run_data(workflow="Tests", status="completed", conclusion="success", sha="a" * 40):
+    return {
+        "workflowName": workflow,
+        "status": status,
+        "conclusion": conclusion,
+        "headSha": sha,
+        "url": f"https://github.com/koysor/alpha/actions/runs/{workflow}",
+        "createdAt": "2026-11-14T09:00:00Z",
+        "event": "push",
+    }
+
+
+class FakeGh:
+    """Stands in for gh: canned `run list` JSON, recording each call."""
+
+    def __init__(self, runs=None, rc=0, stdout=None):
+        self.runs = runs or []
+        self.rc = rc
+        self.stdout = stdout
+        self.calls: list[list[str]] = []
+
+    def __call__(self, args):
+        args = list(args)
+        self.calls.append(args)
+        assert args[:2] == ["run", "list"], args
+        if self.rc:
+            return subprocess.CompletedProcess(args, 1, "", "HTTP 404: Not Found")
+        body = self.stdout if self.stdout is not None else json.dumps(self.runs)
+        return subprocess.CompletedProcess(args, 0, body, "")
+
+
+@pytest.fixture
+def github_repo(repo):
+    """`repo` with a GitHub origin URL, so the gh slug lookup succeeds.
+
+    Nothing is fetched or pushed afterwards, so the URL is never contacted.
+    """
+    git(repo, "remote", "set-url", "origin", "https://github.com/koysor/alpha.git")
+    return repo
+
+
+def test_latest_per_workflow_keeps_newest_of_each():
+    runs = latest_per_workflow(
+        [
+            run_data("Tests", conclusion="failure"),
+            run_data("Lint"),
+            run_data("Tests", conclusion="success"),
+        ]
+    )
+    assert [(r.workflow, r.outcome) for r in runs] == [
+        ("Lint", "passing"),
+        ("Tests", "failing"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("status", "conclusion", "outcome"),
+    [
+        ("completed", "success", "passing"),
+        ("completed", "skipped", "passing"),
+        ("completed", "neutral", "passing"),
+        ("completed", "cancelled", "cancelled"),
+        ("completed", "failure", "failing"),
+        ("completed", "timed_out", "failing"),
+        ("completed", "startup_failure", "failing"),
+        ("in_progress", "", "running"),
+        ("queued", "", "running"),
+    ],
+)
+def test_run_outcomes(status, conclusion, outcome):
+    run = WorkflowRun.from_gh(run_data(status=status, conclusion=conclusion))
+    assert run.outcome == outcome
+
+
+def test_overall_outcome_is_the_worst():
+    def ci(*conclusions):
+        return CiStatus(
+            [
+                WorkflowRun.from_gh(run_data(f"w{i}", conclusion=c))
+                for i, c in enumerate(conclusions)
+            ]
+        )
+
+    assert ci().outcome == "no runs"
+    assert ci("success", "success").outcome == "passing"
+    assert ci("success", "cancelled").outcome == "cancelled"
+    assert ci("success", "failure", "cancelled").outcome == "failing"
+
+
+def test_ci_is_listed_for_the_upstream_branch(github_repo):
+    gh = FakeGh([run_data()])
+    status = inspect_repo(github_repo, gh=gh)
+    assert gh.calls[0][:6] == ["run", "list", "-R", "koysor/alpha", "--branch", "main"]
+    assert status.ci is not None and status.ci.outcome == "passing"
+    assert status.upstream_sha == git(github_repo, "rev-parse", "HEAD")
+
+
+def test_ci_not_asked_for_means_no_gh_calls(github_repo):
+    status = inspect_repo(github_repo)
+    assert status.ci is None and status.ci_note is None
+
+
+def test_failing_ci_sets_exit_code_and_shows_url(github_repo):
+    head = git(github_repo, "rev-parse", "HEAD")
+    gh = FakeGh(
+        [run_data("Tests", conclusion="failure", sha=head), run_data("Lint", sha=head)]
+    )
+    out: list[str] = []
+    assert status_all(github_repo.parent, gh=gh, out=out.append) == 1
+    report = out[0]
+    assert "alpha  failing  failing Tests" in report
+    assert (
+        "Tests: failure  https://github.com/koysor/alpha/actions/runs/Tests" in report
+    )
+    assert "nothing has run" not in report
+
+
+def test_passing_ci_keeps_a_clean_exit(github_repo):
+    head = git(github_repo, "rev-parse", "HEAD")
+    out: list[str] = []
+    assert (
+        status_all(github_repo.parent, gh=FakeGh([run_data(sha=head)]), out=out.append)
+        == 0
+    )
+    assert "alpha  passing  1 workflows" in out[0]
+
+
+def test_ci_without_a_run_on_the_pushed_commit_is_noted(github_repo):
+    out: list[str] = []
+    status_all(github_repo.parent, gh=FakeGh([run_data(sha="b" * 40)]), out=out.append)
+    head = git(github_repo, "rev-parse", "--short=7", "HEAD")
+    assert f"(nothing has run on {head} yet)" in out[0]
+
+
+def test_repo_with_no_workflow_runs(github_repo):
+    out: list[str] = []
+    assert status_all(github_repo.parent, gh=FakeGh([]), out=out.append) == 0
+    assert "alpha  no runs" in out[0]
+
+
+def test_gh_failure_needs_attention(github_repo):
+    out: list[str] = []
+    assert status_all(github_repo.parent, gh=FakeGh(rc=1), out=out.append) == 2
+    assert "alpha: CI status unknown: gh run list failed: HTTP 404" in out[0]
+
+
+def test_gh_invalid_json_needs_attention(github_repo):
+    status = inspect_repo(github_repo, gh=FakeGh(stdout="not json"))
+    assert status.ci is None
+    assert status.ci_error is not None and "invalid JSON" in status.ci_error
+
+
+def test_non_github_origin_is_noted_not_an_error(repo):
+    out: list[str] = []
+    assert status_all(repo.parent, gh=FakeGh(), out=out.append) == 0
+    assert "alpha  not checked: origin is not on GitHub" in out[0]
+
+
+def test_detached_head_skips_ci(github_repo):
+    git(github_repo, "checkout", "-q", "--detach")
+    gh = FakeGh()
+    status = inspect_repo(github_repo, gh=gh)
+    assert not gh.calls
+    assert status.ci_note == "detached HEAD"
+
+
+def test_main_needs_gh_for_ci(monkeypatch, capsys):
+    import repo_status
+
+    real_which = repo_status.shutil.which
+    monkeypatch.setattr(
+        repo_status.shutil,
+        "which",
+        lambda tool: None if tool == "gh" else real_which(tool),
+    )
+    assert main(["--ci"]) == 2
+    assert "gh was not found" in capsys.readouterr().err
