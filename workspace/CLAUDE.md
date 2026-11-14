@@ -17,6 +17,8 @@ Run git, `uv` and test commands from inside the relevant repo, or point at it wi
 | `repo-tools` | Scripts for checking and syncing all the sibling repos, machine setup, this file, and the shared `koysor-skills` Claude plugin | `repo-tools/README.md` |
 | `dataframe-compare` | Placeholder, no code yet | `README.md` |
 | `football-scores` | Placeholder, no code yet; will predict match scores from Betfair odds | `README.md` |
+| `business` | Markdown planning notes for new business ideas, no code | `README.md` |
+| `health` | Markdown planning notes for health objectives (exercise, eating habits), no code | `README.md` |
 
 Follow the guidance file of the repo you are working in; it takes precedence over this file. The placeholder READMEs say to start with `uv init` when work begins.
 
