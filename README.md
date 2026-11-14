@@ -4,7 +4,7 @@ Small scripts for working across a folder of sibling git repos.
 
 ## sync-check
 
-`sync-check` runs the scripts below against the parent folder in one go: `repo_status.py --fetch`, then asks whether to run `sync_repos.py`, then `install_workspace.py --update`.
+`sync-check` runs the scripts below against the parent folder in one go: `clone_repos.py` (which asks before cloning any GitHub repo missing from the folder; skipped if `gh` is not installed), then `repo_status.py --fetch`, then asks whether to run `sync_repos.py`, then `install_workspace.py --update`. `-Yes` / `--yes` does not apply to cloning.
 
 ```powershell
 # Windows, from the repos folder

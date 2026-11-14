@@ -33,8 +33,8 @@ Follow the guidance file of the repo you are working in; it takes precedence ove
 ## Cross-repo status and sync
 
 ```powershell
-.\repo-tools\sync-check.cmd        # fetch, show status of every repo, prompt to sync, then run install_workspace.py --update
-.\repo-tools\sync-check.ps1 -Yes   # same, without the prompt
+.\repo-tools\sync-check.cmd        # offer to clone missing GitHub repos, fetch, show status of every repo, prompt to sync, then run install_workspace.py --update
+.\repo-tools\sync-check.ps1 -Yes   # same, without the sync prompt
 ```
 
 On Linux or macOS use `repo-tools/sync-check.sh` (`--yes` to skip the prompt). The scripts live in `repo-tools`. This machine may also have forwarders at `.\sync-check.cmd` / `.\sync-check.ps1` in the repos folder; they are not in git. To run the underlying scripts directly:
