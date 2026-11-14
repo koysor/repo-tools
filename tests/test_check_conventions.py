@@ -11,6 +11,7 @@ from check_conventions import (
     check_repo,
     check_standalone,
     imported_modules,
+    is_standalone,
     main,
     render_report,
 )
@@ -20,6 +21,12 @@ PYPROJECT = """\
 name = "{name}"
 requires-python = "{python}"
 dependencies = [{deps}]
+"""
+
+
+STANDALONE = """
+[tool.repo-tools.conventions]
+standalone = true
 """
 
 
@@ -42,6 +49,7 @@ def make_repo(
     dependabot: bool = True,
     pre_commit: bool = True,
     readme: bool = True,
+    extra: str = "",
 ) -> Path:
     path = root / name
     path.mkdir(parents=True)
@@ -50,7 +58,7 @@ def make_repo(
         (path / "README.md").write_text("# x\n")
     if python is not None:
         (path / "pyproject.toml").write_text(
-            PYPROJECT.format(name=name, python=python, deps=deps)
+            PYPROJECT.format(name=name, python=python, deps=deps) + extra
         )
         if lock:
             (path / "uv.lock").write_text("version = 1\n")
@@ -123,9 +131,9 @@ def test_missing_pre_commit_only_warns(tmp_path):
     [
         (">=3.14", None, Status.OK),
         (">= 3.14", None, Status.OK),
-        ("==3.14.8", None, Status.OK),
-        ("==3.14.8", "3.14.8", Status.OK),
-        ("==3.14.8", "3.14.7", Status.FAIL),
+        ("==3.14.2", None, Status.OK),
+        ("==3.14.2", "3.14.2", Status.OK),
+        ("==3.14.2", "3.14.1", Status.FAIL),
         (">=3.13", None, Status.FAIL),
         (">=3.14,<3.15", None, Status.FAIL),
         ("==3.13.2", None, Status.FAIL),
@@ -172,29 +180,29 @@ def workspace(tmp_path):
     (lib / "src" / "quant_finance").mkdir(parents=True)
     (lib / "src" / "quant_finance" / "__init__.py").write_text("")
     (lib / "src" / "options").mkdir()  # no __init__.py: not a package
-    cqf = make_repo(tmp_path, "cqf", python="==3.14.8")
-    return cqf, lib
+    course = make_repo(tmp_path, "course", python="==3.14.2", extra=STANDALONE)
+    return course, lib
 
 
 def test_standalone_ok_without_sibling_imports(workspace):
-    cqf, lib = workspace
-    (cqf / "notes.py").write_text("import numpy as np\nimport options\n")
-    assert check_standalone(cqf, {}, [cqf, lib]).status is Status.OK
+    course, lib = workspace
+    (course / "notes.py").write_text("import numpy as np\nimport options\n")
+    assert check_standalone(course, {}, [course, lib]).status is Status.OK
 
 
 def test_standalone_catches_python_import(workspace):
-    cqf, lib = workspace
-    (cqf / "lessons").mkdir()
-    (cqf / "lessons" / "bonds.py").write_text(
+    course, lib = workspace
+    (course / "lessons").mkdir()
+    (course / "lessons" / "bonds.py").write_text(
         "x = 1\nfrom quant_finance import bonds\n"
     )
-    result = check_standalone(cqf, {}, [cqf, lib])
+    result = check_standalone(course, {}, [course, lib])
     assert result.status is Status.FAIL
     assert result.detail == "lessons/bonds.py:2 imports quant_finance (quant-finance)"
 
 
 def test_standalone_catches_notebook_import(workspace):
-    cqf, lib = workspace
+    course, lib = workspace
     notebook = {
         "cells": [
             {"cell_type": "markdown", "source": ["import quant_finance"]},
@@ -204,33 +212,47 @@ def test_standalone_catches_notebook_import(workspace):
             },
         ]
     }
-    (cqf / "lesson.ipynb").write_text(json.dumps(notebook))
-    result = check_standalone(cqf, {}, [cqf, lib])
+    (course / "lesson.ipynb").write_text(json.dumps(notebook))
+    result = check_standalone(course, {}, [course, lib])
     assert result.status is Status.FAIL
     assert result.detail == "lesson.ipynb:2 imports quant_finance (quant-finance)"
 
 
 def test_standalone_catches_dependency(workspace):
-    cqf, lib = workspace
+    course, lib = workspace
     pyproject = {"project": {"dependencies": ["Quant_Finance>=1"]}}
-    result = check_standalone(cqf, pyproject, [cqf, lib])
+    result = check_standalone(course, pyproject, [course, lib])
     assert result.status is Status.FAIL
     assert "depends on quant-finance" in result.detail
 
 
 def test_standalone_skips_hidden_folders(workspace):
-    cqf, lib = workspace
-    venv = cqf / ".venv" / "lib"
+    course, lib = workspace
+    venv = course / ".venv" / "lib"
     venv.mkdir(parents=True)
     (venv / "x.py").write_text("import quant_finance\n")
-    assert check_standalone(cqf, {}, [cqf, lib]).status is Status.OK
+    assert check_standalone(course, {}, [course, lib]).status is Status.OK
+
+
+@pytest.mark.parametrize(
+    ("pyproject", "standalone"),
+    [
+        (None, False),
+        ({}, False),
+        ({"tool": {"repo-tools": {"conventions": {"standalone": True}}}}, True),
+        ({"tool": {"repo-tools": {"conventions": {"standalone": "yes"}}}}, False),
+        ({"tool": {"repo-tools": {"conventions": {}}}}, False),
+    ],
+)
+def test_is_standalone(pyproject, standalone):
+    assert is_standalone(pyproject) is standalone
 
 
 def test_only_standalone_repos_get_the_check(workspace):
-    cqf, lib = workspace
+    course, lib = workspace
     (lib / "uses_itself.py").write_text("import quant_finance\n")
-    assert statuses(check_repo(lib, [cqf, lib]))["standalone"] is Status.NA
-    assert statuses(check_repo(cqf, [cqf, lib]))["standalone"] is Status.OK
+    assert statuses(check_repo(lib, [course, lib]))["standalone"] is Status.NA
+    assert statuses(check_repo(course, [course, lib]))["standalone"] is Status.OK
 
 
 def test_render_report_lists_problems():

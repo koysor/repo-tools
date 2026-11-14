@@ -6,6 +6,9 @@
    plain copy rather than an @import, because Claude Code asks for approval of
    an import from outside the project once per repo.  A copy that differs from
    what would be written is backed up to CLAUDE.md.bak before being replaced.
+   If the repos folder has a CLAUDE.private.md (guidance about private repos,
+   which must never be committed to this public repo), it is appended to the
+   copy.
 2. Makes sure the koysor-skills plugin from this repo's marketplace is installed
    at user scope, adding the marketplace and installing the plugin if they are
    missing (and, with --update, updating both).  Skipped if `claude` is not on
@@ -31,6 +34,7 @@ from typing import Any
 from sync_repos import add_root_argument
 
 SOURCE = Path(__file__).resolve().parent / "workspace" / "CLAUDE.md"
+PRIVATE = "CLAUDE.private.md"
 HEADER = (
     "<!-- Copied from repo-tools/workspace/CLAUDE.md by repo-tools/"
     "install_workspace.py. Edit that file, not this copy. -->\n\n"
@@ -49,15 +53,25 @@ class ClaudeError(Exception):
     """A claude CLI command failed."""
 
 
-def rendered(source: Path = SOURCE) -> str:
-    """Return the text the copy in the repos folder should contain."""
-    return HEADER + source.read_text(encoding="utf-8")
+def rendered(source: Path = SOURCE, private: Path | None = None) -> str:
+    """Return the text the copy in the repos folder should contain.
+
+    `private`, when it exists, is appended after the shared guidance.
+    """
+    text = HEADER + source.read_text(encoding="utf-8")
+    if private is not None and private.is_file():
+        extra = private.read_text(encoding="utf-8").strip()
+        if extra:
+            note = f"<!-- Appended from {PRIVATE}, which is not in git. -->"
+            text = f"{text.rstrip()}\n\n{note}\n\n{extra}\n"
+    return text
 
 
 def install(root: Path, *, check: bool, source: Path = SOURCE) -> int:
     """Write (or with check, compare) root/CLAUDE.md; return the exit code."""
     target = root / "CLAUDE.md"
-    wanted = rendered(source)
+    private = root / PRIVATE
+    wanted = rendered(source, private)
     current = target.read_text(encoding="utf-8") if target.exists() else None
 
     if current == wanted:
@@ -73,7 +87,8 @@ def install(root: Path, *, check: bool, source: Path = SOURCE) -> int:
         shutil.copyfile(target, backup)
         print(f"Backed up the old copy to {backup}")
     target.write_text(wanted, encoding="utf-8", newline="\n")
-    print(f"Wrote {target} from {source}")
+    extra = f" and {private}" if private.is_file() else ""
+    print(f"Wrote {target} from {source}{extra}")
     return 0
 
 
