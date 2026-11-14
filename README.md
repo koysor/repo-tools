@@ -93,6 +93,47 @@ types = false
 | 2 | A step could not be run (timeout, uv missing, unreadable `pyproject.toml`, bad override) or `--repo` named an unknown repo; takes precedence over 1 |
 | 130 | Interrupted with Ctrl-C |
 
+## check_conventions.py
+
+Checks every git repo in the parent folder against the shared conventions in `workspace/CLAUDE.md` and prints one table. It is read-only: it never fixes or commits anything.
+
+```bash
+uv run check_conventions.py                   # every repo
+uv run check_conventions.py --repo cqf        # one repo; repeat --repo for more
+uv run check_conventions.py --root PATH       # scan PATH instead of this repo's parent
+```
+
+| Check | Applies to | Passes when |
+|---|---|---|
+| `readme` | every repo | `README.md` exists |
+| `python` | repos with a `pyproject.toml` | `requires-python` is `>=3.14`, or pins an exact `==3.14.N`; with an exact pin, `.python-version` (if present) says the same version |
+| `lock` | repos with a `pyproject.toml` | `uv.lock` exists and is committed |
+| `ci` | repos with a `pyproject.toml` | `.github/workflows` has a `.yml` or `.yaml` workflow |
+| `dependabot` | repos with a `pyproject.toml` | `.github/dependabot.yml` exists |
+| `pre-commit` | repos with a `pyproject.toml` | `.pre-commit-config.yaml` exists; missing is a warning, not a failure, since no convention requires it |
+| `standalone` | `cqf` (the `STANDALONE` set in the script) | no `.py` file or notebook code cell imports a sibling repo's package, and `pyproject.toml` does not depend on a sibling project. A sibling package is a `src/` folder with an `__init__.py`, or a project name with dashes as underscores. Hidden folders such as `.venv` are skipped |
+
+Exit codes: 0 no failures (warnings allowed), 1 at least one check failed, 2 `--repo` named an unknown repo, `--root` is not a folder, or git is missing. A cell shows `-` where a check does not apply.
+
+## clone_repos.py
+
+Clones the GitHub repos that are missing from the repos folder, for example on a new machine after cloning repo-tools. It lists the owner's repos with `gh repo list` (archived repos and forks left out), compares them with the git repos in the parent folder, shows which are missing, asks once, then clones them.
+
+```bash
+uv run clone_repos.py                  # list, ask, clone
+uv run clone_repos.py --check          # report only; exit 1 if any repo is missing
+uv run clone_repos.py --yes            # clone without asking
+uv run clone_repos.py --owner NAME     # another GitHub user or organisation
+uv run clone_repos.py --root PATH      # clone into PATH instead of this repo's parent
+```
+
+- The owner defaults to the owner of repo-tools' `origin`, and clones use the same protocol (ssh or https) as that `origin`.
+- An existing repo is never touched. A folder with a missing repo's name that is not a git repo is reported and left alone.
+- After cloning, it lists the clones that have a `pyproject.toml`, which need `uv sync`.
+- Without a terminal the script behaves like `--check` unless `--yes` is given. It needs `gh`, logged in with `gh auth login`, and reuses the gh plumbing in `review_prs.py`.
+
+Exit codes: 0 nothing missing, or everything cloned; 1 `--check` found a missing repo, you declined, a clone failed, or a folder was in the way; 2 git or gh is missing, `gh` failed (for example, not logged in), or the owner could not be worked out from `origin`.
+
 ## sync_repos.py
 
 Checks every git repo next to this one for commits that exist on the remote but not locally, shows what is incoming, and offers to rebase onto the incoming commits.
