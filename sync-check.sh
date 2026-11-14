@@ -60,22 +60,29 @@ hue_escape() {
 }
 
 # Prints TEXT in rainbow colors (no newline), starting the sweep at OFFSET.
+# With DELAY (seconds), types it out one character at a time.
 rainbow() {
-    local text=$1 i=${2:-0} out='' ch k
+    local text=$1 i=${2:-0} delay=${3:-} out='' ch k piece
     local colors=(31 33 32 36 34 35)
     for ((k = 0; k < ${#text}; k++)); do
         ch=${text:k:1}
         if [ "$ch" = ' ' ]; then
-            out+=' '
-            continue
-        fi
-        if $truecolor; then
-            hue_escape $((i * 12))
-            out+="$REPLY$ch"
+            piece=' '
         else
-            out+=$'\033'"[${colors[i % 6]}m$ch"
+            if $truecolor; then
+                hue_escape $((i * 12))
+                piece="$REPLY$ch"
+            else
+                piece=$'\033'"[${colors[i % 6]}m$ch"
+            fi
+            i=$((i + 1))
         fi
-        i=$((i + 1))
+        if [ -n "$delay" ]; then
+            printf '%s' "$piece"
+            [ "$ch" != ' ' ] && sleep "$delay"
+        else
+            out+=$piece
+        fi
     done
     printf '%s\033[0m' "$out"
 }
@@ -158,7 +165,16 @@ show_completion() {
     done
 }
 
-echo "== repo status + sync =="
+if $animate; then
+    shimmer 40 \
+        '  +------------------+' \
+        '  |    sync-check    |' \
+        '  +------------------+'
+    rainbow '          repo status + sync' 0 0.008
+    echo
+else
+    echo "== repo status + sync =="
+fi
 echo
 
 # repo_status exits 1 when something needs attention, which is a report, not a failure.
