@@ -18,7 +18,7 @@ repo-tools/sync-check.sh
 repo-tools/sync-check.sh --yes
 ```
 
-Without an interactive console it skips the sync prompt and does not sync unless `-Yes` / `--yes` is given. On an interactive Windows console, `sync-check.ps1` ends with a completion animation listing what each step did (status checked, synced or skipped, workspace updated, or which step failed), then waits for a key press so a double-clicked window stays open. It exits with `install_workspace.py`'s exit code. To keep running `.\sync-check.cmd` from the repos folder itself, add a forwarder there containing `@call "%~dp0repo-tools\sync-check.cmd" %*`.
+Without an interactive console it skips the sync prompt and does not sync unless `-Yes` / `--yes` is given. On an interactive console or terminal, both `sync-check.ps1` and `sync-check.sh` end with a completion animation listing what each step did (status checked, synced or skipped, workspace updated, or which step failed), then wait for a key press so a double-clicked window stays open. Both exit with `install_workspace.py`'s exit code. To keep running `.\sync-check.cmd` from the repos folder itself, add a forwarder there containing `@call "%~dp0repo-tools\sync-check.cmd" %*`.
 
 ## repo_status.py
 
