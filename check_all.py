@@ -18,6 +18,11 @@ A repo can override or switch off any step in its pyproject.toml:
     lint = ["ruff", "check", "src", "tests"]
     types = false
 
+A command whose first word is a Python tool in MODULE_TOOLS (ruff, pytest,
+black and so on) runs as `python -m <tool> ...`, through the repo's own
+interpreter.  That skips the tool's .exe launcher in .venv/Scripts, which
+Windows Application Control can block.  Any other command runs as written.
+
 Nothing is fixed or committed.  `uv sync --locked` does bring each repo's
 .venv in line with its lock file, as `uv run` would.  Standard library only,
 so `uv run check_all.py` just works.
@@ -46,6 +51,13 @@ DEFAULT_TIMEOUT = 900
 DEFAULT_TAIL = 20
 DEFAULT_JOBS = 4
 PYTEST_NO_TESTS = 5
+
+# Tools that can be run as `python -m <name>`.  Running them that way avoids
+# their console-script launchers (pytest.exe and so on), which Windows
+# Application Control can refuse to start.
+MODULE_TOOLS = frozenset(
+    {"black", "flake8", "isort", "mypy", "pylint", "pytest", "ruff", "ty"}
+)
 
 RED = "31"
 GREEN = "32"
@@ -178,6 +190,13 @@ def plan(path: Path, pyproject: dict[str, Any], step: str) -> list[str] | str:
     )
 
 
+def as_module(command: Sequence[str]) -> list[str]:
+    """`command` rewritten as `python -m <tool> ...` when its tool allows it."""
+    if command and command[0] in MODULE_TOOLS:
+        return ["python", "-m", *command]
+    return list(command)
+
+
 def child_env() -> dict[str, str]:
     """Environment for uv in another repo.
 
@@ -275,7 +294,9 @@ def check_repo(
             repo.results.append(StepResult(step, Status.SKIP, detail=command))
             continue
         repo.results.append(
-            _execute(step, ["run", "--no-sync", *command], path, run, timeout)
+            _execute(
+                step, ["run", "--no-sync", *as_module(command)], path, run, timeout
+            )
         )
     repo.seconds = time.monotonic() - start
     return repo
