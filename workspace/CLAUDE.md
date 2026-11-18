@@ -23,6 +23,7 @@ The table lists the public repos only. `repo-tools` is public, so private repos 
 - A repo that must never import from or depend on a sibling repo says so in its own guidance and sets `[tool.repo-tools.conventions] standalone = true` in its `pyproject.toml`, which `check_conventions.py` enforces.
 - Use `uv run <tool>` rather than calling `python`, `pytest` or `ruff` directly. Code in these repos can use 3.14-only syntax that older interpreters reject (for example, unparenthesised `except A, B:`).
 - Claude skills used in more than one repo live in `repo-tools/skills/` and are shared through the `koysor-skills` plugin, which `repo-tools/install_workspace.py` installs at user scope (see `repo-tools/README.md`). Skills specific to one repo stay in that repo's `.claude/skills/<name>/SKILL.md`.
+- `maths-python/docs/notation.md` is the guide to the mathematical notation used across the maths and finance repos. Every code change in `maths-python` or `quant-finance` must check it and, if the change adds, removes or redefines a symbol, update it (a separate commit in `maths-python` when the change is elsewhere). Each repo's `CLAUDE.md` has the details.
 - On Windows, several repos' guidance and scripts assume a POSIX shell and macOS or Linux tools: the `launch_*.sh` scripts, `source .venv/bin/activate`, `lsof`. Run those through the Bash tool (Git Bash), or use the direct `uv run ...` equivalent; `lsof` needs a Windows substitute.
 
 ## Cross-repo status and sync
