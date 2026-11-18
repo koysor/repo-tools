@@ -10,6 +10,7 @@ from check_all import (
     RepoResult,
     Status,
     StepResult,
+    as_module,
     check_all,
     check_repo,
     default_command,
@@ -52,8 +53,11 @@ class FakeUv:
     ) -> subprocess.CompletedProcess[str]:
         args = list(args)
         self.calls.append((path.name, args))
-        # "sync", or the tool after `run --no-sync`, plus its subcommand.
-        key = args[0] if args[0] == "sync" else " ".join(args[2:4])
+        # "sync", or the tool after `run --no-sync [python -m]`, plus its subcommand.
+        command = args[2:]
+        if command[:2] == ["python", "-m"]:
+            command = command[2:]
+        key = args[0] if args[0] == "sync" else " ".join(command[:2])
         code = self.codes.get((path.name, key), 0)
         return subprocess.CompletedProcess(args, code, self.output, None)
 
@@ -150,6 +154,38 @@ def test_overrides(root):
     assert "switched off" in plan(path, pyproject, "format")
 
 
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        (["pytest"], ["python", "-m", "pytest"]),
+        (["ruff", "check", "."], ["python", "-m", "ruff", "check", "."]),
+        (["black", "--check", "."], ["python", "-m", "black", "--check", "."]),
+        (["ty", "check"], ["python", "-m", "ty", "check"]),
+        (["mypy", "src"], ["python", "-m", "mypy", "src"]),
+        (["bash", "scripts/check.sh"], ["bash", "scripts/check.sh"]),
+        (["python", "-m", "pytest"], ["python", "-m", "pytest"]),
+    ],
+)
+def test_as_module(command, expected):
+    assert as_module(command) == expected
+
+
+def test_override_that_is_not_a_python_tool_runs_as_written(root):
+    path = make_repo(
+        root,
+        "alpha",
+        RUFF_PYTEST
+        + '\n[tool.repo-tools.check-all]\nlint = ["bash", "scripts/lint.sh"]\n'
+        + 'format = ["black", "--check", "."]\n',
+    )
+    uv = FakeUv()
+    check_repo(path, steps=["lint", "format"], run=uv)
+    assert [args for _, args in uv.calls][1:] == [
+        ["run", "--no-sync", "bash", "scripts/lint.sh"],
+        ["run", "--no-sync", "python", "-m", "black", "--check", "."],
+    ]
+
+
 @pytest.mark.parametrize("bad", [True, "ruff check", [], ["ruff", 1], [""]])
 def test_bad_override_is_rejected(root, bad):
     path = make_repo(root, "alpha")
@@ -176,9 +212,9 @@ def test_check_repo_runs_sync_then_steps(root):
     result = check_repo(path, run=uv)
     assert [args for _, args in uv.calls] == [
         ["sync", "--locked"],
-        ["run", "--no-sync", "ruff", "check", "."],
-        ["run", "--no-sync", "ruff", "format", "--check", "."],
-        ["run", "--no-sync", "pytest"],
+        ["run", "--no-sync", "python", "-m", "ruff", "check", "."],
+        ["run", "--no-sync", "python", "-m", "ruff", "format", "--check", "."],
+        ["run", "--no-sync", "python", "-m", "pytest"],
     ]
     statuses = {r.step: r.status for r in result.results}
     assert statuses == {
@@ -288,7 +324,7 @@ def test_report_table_failures_and_skips(root):
     assert alpha_row.split()[:6] == ["alpha", "pass", "pass", "FAIL", "-", "pass"]
     assert beta_row.split()[:6] == ["beta", "pass", "pass", "pass", "-", "-"]
     assert "alpha format: FAIL (exit status 1)" in report
-    assert "$ uv run --no-sync ruff format --check ." in report
+    assert "$ uv run --no-sync python -m ruff format --check ." in report
     assert "  line2" in report and "line1" not in report  # tail=1
     assert "beta tests: no tests/ directory or testpaths" in report
     assert "No pyproject.toml: notes" in report
@@ -323,7 +359,7 @@ def test_steps_subset_runs_only_those(root):
     check_all(root, steps=["lint"], run=uv, out=out.append)
     assert [args for _, args in uv.calls] == [
         ["sync", "--locked"],
-        ["run", "--no-sync", "ruff", "check", "."],
+        ["run", "--no-sync", "python", "-m", "ruff", "check", "."],
     ]
     assert out[0].splitlines()[0].split() == ["repo", "sync", "lint", "time"]
 

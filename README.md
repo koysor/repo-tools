@@ -86,6 +86,8 @@ lint = ["ruff", "check", "src", "tests"]   # run under `uv run --no-sync`
 types = false
 ```
 
+A command that starts with a Python tool (`ruff`, `ty`, `mypy`, `pytest`, `black`, `isort`, `flake8` or `pylint`) runs as `python -m <tool> ...`, so `ruff check .` becomes `uv run --no-sync python -m ruff check .`. This avoids the tool's `.exe` launcher in `.venv\Scripts`, which Windows Application Control can block (`os error 4551`). Any other command, such as a shell script, runs as written.
+
 | Code | Meaning |
 |---|---|
 | 0 | Every step that applies passed |
