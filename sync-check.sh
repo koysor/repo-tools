@@ -4,12 +4,13 @@
 # sync_repos, then install_workspace --update (all from this repo, repo-tools)
 # against the folder that holds the sibling repos.
 # Without an interactive terminal it skips the prompt and does not sync, unless
-# -y/--yes is given.
+# -y/--yes is given, which is passed through to sync_repos so it rebases every
+# eligible repo without asking.
 set -uo pipefail
 
 usage() {
     echo "Usage: $(basename "$0") [-y|--yes]"
-    echo "  -y, --yes   run sync_repos without the first prompt (it still asks per repo)"
+    echo "  -y, --yes   run sync_repos and rebase every eligible repo without asking"
 }
 
 yes=false
@@ -216,7 +217,9 @@ else
 fi
 
 if $run; then
-    uv run --project "$project" "$project/sync_repos.py" --root "$root"
+    sync_args=(--root "$root")
+    $yes && sync_args+=(--yes)
+    uv run --project "$project" "$project/sync_repos.py" "${sync_args[@]}"
     sync_exit=$?
     if [ "$sync_exit" -eq 0 ]; then
         add_step ok "repos synced"

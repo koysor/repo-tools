@@ -67,7 +67,7 @@ uv run --project repo-tools repo-tools/review_prs.py --root .           # same, 
 
 The `koysor-skills:review-prs` skill adds a Claude review of each diff on top and merges only what the user selects, via `--merge REPO#N@SHA`. After merging, the local clones are behind; pull with `sync_repos.py`.
 
-`sync_repos.py` rebases onto incoming commits rather than merging. Without `--check` it can rewrite local history, and `sync-check -Yes` / `sync-check.sh --yes` skips only the first prompt (`sync_repos.py` still asks per repo). Both scripts discover repos by scanning the parent folder, so a new sibling repo is picked up automatically.
+`sync_repos.py` rebases onto incoming commits rather than merging. Without `--check` it can rewrite local history, and `sync-check -Yes` / `sync-check.sh --yes` passes `--yes` on to it, so it rebases every eligible repo without asking. Both scripts discover repos by scanning the parent folder, so a new sibling repo is picked up automatically.
 
 ## Developing repo-tools
 

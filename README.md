@@ -9,13 +9,13 @@ Small scripts for working across a folder of sibling git repos.
 ```powershell
 # Windows, from the repos folder
 .\repo-tools\sync-check.cmd        # or sync-check.ps1
-.\repo-tools\sync-check.ps1 -Yes   # sync without the first prompt (sync_repos.py still asks per repo)
+.\repo-tools\sync-check.ps1 -Yes   # sync without any prompt (passes --yes to sync_repos.py)
 ```
 
 ```bash
 # Linux / macOS, from anywhere
 repo-tools/sync-check.sh
-repo-tools/sync-check.sh --yes
+repo-tools/sync-check.sh --yes    # sync without any prompt (passes --yes to sync_repos.py)
 ```
 
 Without an interactive console it skips the sync prompt and does not sync unless `-Yes` / `--yes` is given. On an interactive console or terminal, both `sync-check.ps1` and `sync-check.sh` end with a completion animation listing what each step did (status checked, synced or skipped, workspace updated, or which step failed), then wait for a key press so a double-clicked window stays open. Both exit with `install_workspace.py`'s exit code. To keep running `.\sync-check.cmd` from the repos folder itself, add a forwarder there containing `@call "%~dp0repo-tools\sync-check.cmd" %*`.

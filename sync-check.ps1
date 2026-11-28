@@ -2,7 +2,8 @@
 # then asks whether to run sync_repos, then install_workspace (all from this repo,
 # repo-tools) against the folder that holds the sibling repos.
 # Without a usable console (-NonInteractive, piped input) it skips the prompt and
-# does not sync, unless -Yes is given.
+# does not sync, unless -Yes is given, which is passed through to sync_repos as
+# --yes so it rebases every eligible repo without asking.
 param(
     [switch]$Yes
 )
@@ -180,7 +181,9 @@ if ($Yes) {
 }
 
 if ($run) {
-    uv run --project $project (Join-Path $project 'sync_repos.py') --root $root
+    $syncArgs = @('--root', $root)
+    if ($Yes) { $syncArgs += '--yes' }
+    uv run --project $project (Join-Path $project 'sync_repos.py') @syncArgs
     $steps += if ($LASTEXITCODE -eq 0) {
         @{ State = 'ok'; Text = 'repos synced' }
     } else {
